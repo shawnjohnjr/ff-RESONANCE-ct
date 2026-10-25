@@ -35,7 +35,7 @@ local function inventoryChoices(s)
    local id=readInteger(r.p+8);local typ=readBytes(r.p+0x70,1)
    if id and id>0 and (typ==1 or typ==3) and r.key~='?' then
     assert(not catalog[id],'Duplicate item ID')
-    catalog[id]={name=r.key,kind=typ}
+    catalog[id]={name=itemDisplayName(id,typ),kind=typ}
    end
   end
  end
