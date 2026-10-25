@@ -77,11 +77,22 @@ CT 自動連接 `FFRS-Win64-Shipping.exe`，檢查執行檔版本，從目前世
 
 ## 原始碼
 
-- `src/common.lua`：版本檢查、目前存檔與資料表定位。
+- `src/game_connection.lua`：版本檢查、目前存檔與資料表定位。
 - `src/item_names.lua`：官方英文／繁體中文道具名稱與分類；只含名稱，不含敘述或劇情。
-- `src/editors.lua`：道具名稱／選擇資料、寫入檢查、升級表與遊戲函式呼叫。
-- `src/entry1.lua` 至 `src/entry6.lua`：各項介面與操作。
+- `src/gameplay_helpers.lua`：道具名稱／選擇資料、寫入檢查、升級表與遊戲函式呼叫。
+- `src/inspect_save.lua`：唯讀存檔檢查。
+- `src/set_gil.lua`：設定金錢。
+- `src/list_inventory.lua`：列出背包 ID 與數量。
+- `src/edit_item_quantity.lua`：雙語道具選單與數量修改。
+- `src/upgrade_party_to_level_99.lua`：目前隊伍升至 Lv.99。
+- `src/grant_endgame_equipment.lua`：補足全角色終盤裝備。
 - `build.py`：產生可獨立使用的 CT。
+
+`build.py` 的 `TABLE_ENTRIES` 明確列出各項目的固定 ID、顯示名稱、來源檔案與輔助程式依賴；不以檔名編號或清單順序推測依賴。顯示順序可調整，既有 ID 應保留。
+
+新增功能時：在 `src/` 建立依功能命名的 Lua 檔，於 `TABLE_ENTRIES` 加入唯一 ID 與來源路徑，再執行產生器。共享的定位與資料操作邏輯放在對應輔助檔，功能檔負責操作流程與介面。產生器會拒絕重複 ID、重複來源及遺漏的來源檔案。
+
+請修改 Lua 原始碼並重新產生 CT，避免直接編輯產生的 CT。僅整理程式碼時，可比較產生前後 CT 的 SHA-256；涉及執行邏輯變更時，再進行 CE 語法檢查與相應實機驗證。
 
 使用 Python 3：
 
