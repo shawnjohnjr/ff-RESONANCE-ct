@@ -64,11 +64,20 @@ local function connect()
  end
  local cached=_G.FFRS_CT_SESSION
  local manager,index
- if cached and cached.pid==pid and cached.base==base and at(cached.index)==cached.manager and ismanager(cached.manager) then
+ local tables={}
+ if cached and cached.pid==pid and cached.base==base and at(cached.index)==cached.manager and ismanager(cached.manager) and cached.tables then
   manager,index=cached.manager,cached.index
+  tables=cached.tables
  else
   for i=0,count-1 do
    local o=at(i)
+   if o and o&gt;65536 and cname(o)=='DataTable' then
+    local row=readPointer(o+0x28)
+    local rn=oname(row)
+    if rn=='CONSUMABLES_ITEM_DATA' or rn=='EQUIPMENT_ITEM_DATA' or rn=='UNIT_PARAMETER' or rn=='UNIT_LEVEL_PARAMETER_LIST' then
+     tables[#tables+1]={object=o,index=i,row=rn,name=oname(o)}
+    end
+   end
    if ismanager(o) then assert(not manager,'Multiple active save managers; stop');manager,index=o,i end
   end
  end
@@ -81,9 +90,10 @@ local function connect()
  local inv=readPointer(save+0xA8);local n=readInteger(save+0xB0);local cap=readInteger(save+0xB4)
  assert(n and cap and n&gt;=0 and n&lt;=cap and cap&lt;=100000,'Invalid inventory array')
  assert(n==0 or (inv and inv&gt;65536),'Invalid inventory pointer')
- _G.FFRS_CT_SESSION={pid=pid,base=base,manager=manager,index=index}
- return {pid=pid,base=base,manager=manager,save=save,gil=gil,inventory=inv,count=n,capacity=cap}
+ _G.FFRS_CT_SESSION={pid=pid,base=base,manager=manager,index=index,tables=tables}
+ return {at=at,oname=oname,cname=cname,name=name,tables=tables,pid=pid,base=base,manager=manager,save=save,gil=gil,inventory=inv,count=n,capacity=cap}
 end
+
 
 local s=connect()
 showMessage(string.format('唯讀檢查通過\nGil：%d\n背包記錄：%d\n遊戲 build：24250053\n未修改遊戲資料。',s.gil,s.count))
@@ -94,7 +104,7 @@ showMessage(string.format('唯讀檢查通過\nGil：%d\n背包記錄：%d\n遊�
     </CheatEntry>
     <CheatEntry>
       <ID>2</ID>
-      <Description>"02 設定持有 Gil（輸入目標；寫入讀回已驗證）"</Description>
+      <Description>"02 設定持有 Gil"</Description>
       <VariableType>Auto Assembler Script</VariableType>
       <AssemblerScript>[ENABLE]
 {$lua}
@@ -155,11 +165,20 @@ local function connect()
  end
  local cached=_G.FFRS_CT_SESSION
  local manager,index
- if cached and cached.pid==pid and cached.base==base and at(cached.index)==cached.manager and ismanager(cached.manager) then
+ local tables={}
+ if cached and cached.pid==pid and cached.base==base and at(cached.index)==cached.manager and ismanager(cached.manager) and cached.tables then
   manager,index=cached.manager,cached.index
+  tables=cached.tables
  else
   for i=0,count-1 do
    local o=at(i)
+   if o and o&gt;65536 and cname(o)=='DataTable' then
+    local row=readPointer(o+0x28)
+    local rn=oname(row)
+    if rn=='CONSUMABLES_ITEM_DATA' or rn=='EQUIPMENT_ITEM_DATA' or rn=='UNIT_PARAMETER' or rn=='UNIT_LEVEL_PARAMETER_LIST' then
+     tables[#tables+1]={object=o,index=i,row=rn,name=oname(o)}
+    end
+   end
    if ismanager(o) then assert(not manager,'Multiple active save managers; stop');manager,index=o,i end
   end
  end
@@ -172,9 +191,10 @@ local function connect()
  local inv=readPointer(save+0xA8);local n=readInteger(save+0xB0);local cap=readInteger(save+0xB4)
  assert(n and cap and n&gt;=0 and n&lt;=cap and cap&lt;=100000,'Invalid inventory array')
  assert(n==0 or (inv and inv&gt;65536),'Invalid inventory pointer')
- _G.FFRS_CT_SESSION={pid=pid,base=base,manager=manager,index=index}
- return {pid=pid,base=base,manager=manager,save=save,gil=gil,inventory=inv,count=n,capacity=cap}
+ _G.FFRS_CT_SESSION={pid=pid,base=base,manager=manager,index=index,tables=tables}
+ return {at=at,oname=oname,cname=cname,name=name,tables=tables,pid=pid,base=base,manager=manager,save=save,gil=gil,inventory=inv,count=n,capacity=cap}
 end
+
 
 local s=connect()
 local answer=inputQuery('設定持有 Gil','目前 '..s.gil..' Gil。輸入目標金額（0–9,999,999），取消則不修改：',tostring(s.gil))
@@ -258,11 +278,20 @@ local function connect()
  end
  local cached=_G.FFRS_CT_SESSION
  local manager,index
- if cached and cached.pid==pid and cached.base==base and at(cached.index)==cached.manager and ismanager(cached.manager) then
+ local tables={}
+ if cached and cached.pid==pid and cached.base==base and at(cached.index)==cached.manager and ismanager(cached.manager) and cached.tables then
   manager,index=cached.manager,cached.index
+  tables=cached.tables
  else
   for i=0,count-1 do
    local o=at(i)
+   if o and o&gt;65536 and cname(o)=='DataTable' then
+    local row=readPointer(o+0x28)
+    local rn=oname(row)
+    if rn=='CONSUMABLES_ITEM_DATA' or rn=='EQUIPMENT_ITEM_DATA' or rn=='UNIT_PARAMETER' or rn=='UNIT_LEVEL_PARAMETER_LIST' then
+     tables[#tables+1]={object=o,index=i,row=rn,name=oname(o)}
+    end
+   end
    if ismanager(o) then assert(not manager,'Multiple active save managers; stop');manager,index=o,i end
   end
  end
@@ -275,9 +304,10 @@ local function connect()
  local inv=readPointer(save+0xA8);local n=readInteger(save+0xB0);local cap=readInteger(save+0xB4)
  assert(n and cap and n&gt;=0 and n&lt;=cap and cap&lt;=100000,'Invalid inventory array')
  assert(n==0 or (inv and inv&gt;65536),'Invalid inventory pointer')
- _G.FFRS_CT_SESSION={pid=pid,base=base,manager=manager,index=index}
- return {pid=pid,base=base,manager=manager,save=save,gil=gil,inventory=inv,count=n,capacity=cap}
+ _G.FFRS_CT_SESSION={pid=pid,base=base,manager=manager,index=index,tables=tables}
+ return {at=at,oname=oname,cname=cname,name=name,tables=tables,pid=pid,base=base,manager=manager,save=save,gil=gil,inventory=inv,count=n,capacity=cap}
 end
+
 
 local s=connect()
 assert(s.count&lt;=5000,'Inventory too large for this viewer')
@@ -289,6 +319,490 @@ for i=0,s.count-1 do
  lines[#lines+1]=string.format('ID %d：%d',id,amount)
 end
 showMessage(table.concat(lines,'\n'))
+
+{$asm}
+[DISABLE]
+</AssemblerScript>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>4</ID>
+      <Description>"04 選擇道具並修改數量（日文名稱／已持有）"</Description>
+      <VariableType>Auto Assembler Script</VariableType>
+      <AssemblerScript>[ENABLE]
+{$lua}
+if syntaxcheck then return end
+-- FFRS retail Steam build 24250053. Read-only lookup, no injected game calls.
+-- SDK reference: PolarWizard/final-fantasy-resonance-fix (MIT).
+local function connect()
+ local pid=assert(getProcessIDFromProcessName('FFRS-Win64-Shipping.exe'),'Resonance is not running')
+ if getOpenedProcessID()~=pid then openProcess(pid) end
+ local base=assert(getAddressSafe('FFRS-Win64-Shipping.exe'),'Game module unavailable')
+ local pe=base+readInteger(base+0x3c)
+ assert(readInteger(pe+8)==0x6A586B2F and readInteger(pe+0x50)==503013376,'Unsupported game build; stop and revalidate')
+ local pool=base+0x9CA1280
+ local names={}
+ local blocks=readInteger(pool+8)
+ assert(blocks and blocks&gt;=0 and blocks&lt;8192,'Invalid name pool')
+ local function name(id)
+  if not id or id&lt;0 then return '?' end
+  if names[id] then return names[id] end
+  local block=math.floor(id/65536);local off=(id%65536)*2
+  if block&gt;blocks then return '?' end
+  local p=readPointer(pool+0x10+block*8);if not p or p&lt;65536 then return '?' end
+  local h=readSmallInteger(p+off);if not h then return '?' end
+  if h&lt;0 then h=h+65536 end
+  local len=math.floor(h/64)
+  if len&gt;1023 then return '?' end
+  local s
+  if h%2==1 then s=readString(p+off+2,len*2,true)
+  else local b=readBytes(p+off+2,len,true);s=b and string.char(table.unpack(b)) end
+  names[id]=s or '?';return names[id]
+ end
+ assert(name(0)=='None','Name pool does not match this game')
+ local function oname(o) return o and o&gt;65536 and name(readInteger(o+0x18)) or '?' end
+ local classes={}
+ local function cname(o)
+  local c=o and readPointer(o+0x10)
+  if not c or c&lt;65536 then return '?' end
+  if not classes[c] then classes[c]=oname(c) end
+  return classes[c]
+ end
+ local world=readPointer(base+0x9AA0540)
+ assert(world and world&gt;65536 and cname(world)=='World','Wait for a loaded world')
+ local gi=readPointer(world+0x228)
+ assert(gi and gi&gt;65536,'Wait for the game instance')
+ local g=base+0x9D84DD0;local count=readInteger(g+0x14);local chunks=readPointer(g)
+ assert(count and count&gt;0 and count&lt;2000000 and chunks and chunks&gt;65536,'Invalid object array')
+ local chunkCount=readInteger(g+0x1c)
+ assert(chunkCount and chunkCount&gt;0 and chunkCount&lt;=math.ceil(2000000/65536),'Invalid object chunks')
+ local function at(i)
+  if i&lt;0 or i&gt;=count then return nil end
+  local ch=readPointer(chunks+math.floor(i/65536)*8)
+  return ch and ch&gt;65536 and readPointer(ch+(i%65536)*24) or nil
+ end
+ local function ismanager(o)
+  if not o or o&lt;65536 then return false end
+  local flags=readInteger(o+8)
+  return flags and (flags &amp; 0x10)==0 and cname(o)=='CPP_MuchaSaveDataManager' and readPointer(o+0x20)==gi
+ end
+ local cached=_G.FFRS_CT_SESSION
+ local manager,index
+ local tables={}
+ if cached and cached.pid==pid and cached.base==base and at(cached.index)==cached.manager and ismanager(cached.manager) and cached.tables then
+  manager,index=cached.manager,cached.index
+  tables=cached.tables
+ else
+  for i=0,count-1 do
+   local o=at(i)
+   if o and o&gt;65536 and cname(o)=='DataTable' then
+    local row=readPointer(o+0x28)
+    local rn=oname(row)
+    if rn=='CONSUMABLES_ITEM_DATA' or rn=='EQUIPMENT_ITEM_DATA' or rn=='UNIT_PARAMETER' or rn=='UNIT_LEVEL_PARAMETER_LIST' then
+     tables[#tables+1]={object=o,index=i,row=rn,name=oname(o)}
+    end
+   end
+   if ismanager(o) then assert(not manager,'Multiple active save managers; stop');manager,index=o,i end
+  end
+ end
+ assert(manager,'Active save manager not found; load a save first')
+ local save=readPointer(manager+0x60)
+ assert(save and save&gt;65536 and cname(save)=='CPP_MuchaGameSaveData','Active save data unavailable')
+ local flags=readInteger(save+8);assert(flags and (flags &amp; 0x10)==0,'Default object is not a save')
+ local gil=readInteger(save+0x28)
+ assert(gil and gil&gt;=0 and gil&lt;=2147483647,'Invalid money value')
+ local inv=readPointer(save+0xA8);local n=readInteger(save+0xB0);local cap=readInteger(save+0xB4)
+ assert(n and cap and n&gt;=0 and n&lt;=cap and cap&lt;=100000,'Invalid inventory array')
+ assert(n==0 or (inv and inv&gt;65536),'Invalid inventory pointer')
+ _G.FFRS_CT_SESSION={pid=pid,base=base,manager=manager,index=index,tables=tables}
+ return {at=at,oname=oname,cname=cname,name=name,tables=tables,pid=pid,base=base,manager=manager,save=save,gil=gil,inventory=inv,count=n,capacity=cap}
+end
+
+-- UE DataTable rows: sparse TMap&lt;FName, uint8*&gt; with allocation-bit checks.
+local function tableRows(s,o,expected)
+ assert(s.cname(o)=='DataTable' and s.oname(readPointer(o+0x28))==expected,'Data table changed; retry')
+ local m=o+0x30;local p=readPointer(m);local n=readInteger(m+8);local cap=readInteger(m+12)
+ assert(n and cap and n&gt;=0 and n&lt;=cap and cap&lt;=10000,'Invalid table size')
+ assert(n==0 or (p and p&gt;65536),'Invalid row data')
+ local bits=readPointer(m+0x20);if not bits or bits==0 then bits=m+0x10 end
+ local bitCount=readInteger(m+0x28);assert(bitCount and bitCount&gt;=n and bitCount&lt;=10000,'Invalid allocation flags')
+ local out={}
+ for i=0,n-1 do
+  local b=assert(readInteger(bits+math.floor(i/32)*4),'Unreadable allocation flags')
+  if (b &amp; (1 &lt;&lt; (i%32)))~=0 then
+   local a=p+i*24;local row=readPointer(a+8)
+   assert(row and row&gt;65536,'Invalid row pointer')
+   out[#out+1]={key=s.name(readInteger(a)),p=row}
+  end
+ end
+ return out
+end
+local function findTable(s,row)
+ local found
+ for _,t in ipairs(s.tables) do
+  if t.row==row then
+   assert(s.at(t.index)==t.object and s.oname(t.object)==t.name,'Table cache expired; reopen CT')
+   assert(not found,'Multiple matching tables; stop')
+   found=t.object
+  end
+ end
+ return assert(found,'Required table not loaded: '..row)
+end
+local function inventoryChoices(s)
+ local catalog={}
+ for _,kind in ipairs({'CONSUMABLES_ITEM_DATA','EQUIPMENT_ITEM_DATA'}) do
+  for _,r in ipairs(tableRows(s,findTable(s,kind),kind)) do
+   local id=readInteger(r.p+8);local typ=readBytes(r.p+0x70,1)
+   if id and id&gt;0 and (typ==1 or typ==3) and r.key~='?' then
+    assert(not catalog[id],'Duplicate item ID')
+    catalog[id]={name=r.key,kind=typ}
+   end
+  end
+ end
+ assert(s.count&lt;=5000,'Inventory too large')
+ local out,seen={},{}
+ for i=0,s.count-1 do
+  local a=s.inventory+i*8;local id=readInteger(a);local qty=readInteger(a+4)
+  assert(id and qty and qty&gt;=0,'Invalid inventory entry')
+  local item=catalog[id]
+  if item and qty&gt;0 then
+   assert(not seen[id],'Duplicate owned item ID');seen[id]=true
+   out[#out+1]={id=id,quantity=qty,address=a,name=item.name,kind=item.kind}
+  end
+ end
+ table.sort(out,function(a,b)return a.id&lt;b.id end)
+ return out
+end
+local function setItem(s,item,target)
+ assert(target and target==math.floor(target) and target&gt;=1 and target&lt;=99,'Quantity must be 1..99')
+ local now=connect()
+ assert(now.save==s.save and now.manager==s.manager and now.inventory==s.inventory and now.count==s.count,'Inventory changed; reopen the picker')
+ assert(readInteger(item.address)==item.id and readInteger(item.address+4)==item.quantity,'Item changed during input; retry')
+ if target==item.quantity then return end
+ assert(writeInteger(item.address+4,target),'Item write failed')
+ if readInteger(item.address+4)~=target then
+  writeInteger(item.address+4,item.quantity)
+  error('Item read-back failed; attempted to restore original quantity')
+ end
+end
+local function arrayAt(a,max)
+ local p=readPointer(a);local n=readInteger(a+8);local cap=readInteger(a+12)
+ assert(n and cap and n&gt;=0 and n&lt;=cap and cap&lt;=max,'Invalid array')
+ assert(n==0 or (p and p&gt;65536),'Invalid array pointer')
+ return p,n
+end
+local function partyPlan(s)
+ local party,n=arrayAt(s.save+0x90,8);assert(n&gt;0,'No party members')
+ local units,un=arrayAt(s.save+0x60,64)
+ local byId={}
+ for i=0,un-1 do local a=units+i*0xA0;local id=readInteger(a);assert(id and not byId[id],'Invalid unit ID');byId[id]=a end
+ local definitions={}
+ for _,r in ipairs(tableRows(s,findTable(s,'UNIT_PARAMETER'),'UNIT_PARAMETER')) do definitions[readInteger(r.p+8)]={curve=readInteger(r.p+0x3C),name=r.key} end
+ local curves={}
+ for _,r in ipairs(tableRows(s,findTable(s,'UNIT_LEVEL_PARAMETER_LIST'),'UNIT_LEVEL_PARAMETER_LIST')) do curves[readInteger(r.p+8)]=readPointer(r.p+0x10) end
+ local out,seen={},{}
+ for i=0,n-1 do
+  local id=readInteger(party+i*4)
+  assert(id and id&gt;=1001 and id&lt;=1008 and not seen[id],'Unexpected party member');seen[id]=true
+  local a=assert(byId[id],'Party member missing from save');local def=assert(definitions[id],'Missing unit definition')
+  local levels={}
+  for _,r in ipairs(tableRows(s,assert(curves[def.curve],'Missing curve'),'UNIT_LEVEL_PARAMETER')) do
+   local lv=readInteger(r.p+8);local xp=readInteger(r.p+12)
+   if lv and lv&gt;=1 and lv&lt;=99 then assert(not levels[lv] and xp and xp&gt;=0,'Invalid level curve');levels[lv]=xp end
+  end
+  local sum=0;for lv=1,99 do sum=sum+assert(levels[lv],'Incomplete level curve') end
+  assert(sum&gt;0 and sum&lt;=2147483647,'Invalid level-99 EXP')
+  local old=readInteger(a+4);assert(old and old&gt;=0,'Invalid current EXP')
+  out[#out+1]={id=id,address=a,experience=old,target=sum,name=def.name,partyIndex=i}
+ end
+ return out,party,n,units
+end
+local function checkCode(a,bytes)
+ local actual=readBytes(a,#bytes,true);assert(actual,'Game function unavailable')
+ for i=1,#bytes do assert(actual[i]==bytes[i],'Game function mismatch; stop') end
+end
+local function checkLevelFunctions(s)
+ checkCode(s.base+0x523BC00,{0x48,0x8B,0xC4,0x56,0x48,0x81,0xEC,0xD0,0,0,0})
+ checkCode(s.base+0x524B3A0,{0x48,0x89,0x5C,0x24,0x18,0x48,0x89,0x74,0x24,0x20,0x57,0x48,0x81,0xEC,0xD0,1,0,0})
+end
+local function setParty99(s,plan,party,n,units)
+ checkLevelFunctions(s)
+ -- Preflight all targets with the game's own EXP-to-level calculation.
+ for _,u in ipairs(plan) do
+  assert(executeCodeEx(0,5000,s.base+0x523BC00,u.id,u.target)==99,'Game rejected level-99 threshold')
+ end
+ local report={}
+ for _,u in ipairs(plan) do
+  local now=connect();local pp,pn=arrayAt(now.save+0x90,8);local up=arrayAt(now.save+0x60,64)
+  assert(now.save==s.save and now.manager==s.manager and pp==party and pn==n and up==units,'Party/save changed; stop')
+  for _,member in ipairs(plan) do assert(readInteger(party+member.partyIndex*4)==member.id,'Party changed; stop') end
+  assert(readInteger(u.address)==u.id and readInteger(u.address+4)==u.experience,'Character EXP changed; retry')
+  if u.experience&lt;u.target then
+   -- Native SetPlayableUnitExperience(UnitId, EXP, isMaxStatusSet=false):
+   -- updates save EXP and refreshes the live character parameters/skills.
+   executeCodeEx(0,10000,s.base+0x524B3A0,u.id,u.target,0)
+   assert(readInteger(u.address+4)==u.target,'EXP update did not finish; stop and check game')
+  end
+  local xp=readInteger(u.address+4)
+  local lv=executeCodeEx(0,5000,s.base+0x523BC00,u.id,xp)
+  assert(lv==99,'Level verification failed; stop and check game')
+  report[#report+1]=string.format('%s（ID %d）：Lv.%d／EXP %d',u.name,u.id,lv,xp)
+ end
+ return report
+end
+
+local s=connect()
+local choices=inventoryChoices(s)
+assert(#choices&gt;0,'No supported owned items found')
+local list=createStringlist()
+for _,item in ipairs(choices) do list.add(string.format('%s | ID %d | 持有 %d',item.name,item.id,item.quantity)) end
+local ok,index=pcall(showSelectionList,'修改已持有道具','選擇道具（遊戲內部日文名稱）；重要道具與未持有道具不在此清單。',list,false)
+list.destroy()
+if not ok then error(index) end
+if index==nil or index&lt;0 then return end
+local item=assert(choices[index+1],'Invalid item selection')
+local answer=inputQuery('設定道具數量',item.name..'（ID '..item.id..'），目前 '..item.quantity..'。輸入 1–99：',tostring(item.quantity))
+if not answer then return end
+local target=tonumber(answer)
+setItem(s,item,target)
+showMessage(item.name..'：'..item.quantity..' → '..target..'。請重開道具選單核對。')
+
+{$asm}
+[DISABLE]
+</AssemblerScript>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>5</ID>
+      <Description>"05 目前隊伍升至 Lv.99"</Description>
+      <VariableType>Auto Assembler Script</VariableType>
+      <AssemblerScript>[ENABLE]
+{$lua}
+if syntaxcheck then return end
+-- FFRS retail Steam build 24250053. Read-only lookup, no injected game calls.
+-- SDK reference: PolarWizard/final-fantasy-resonance-fix (MIT).
+local function connect()
+ local pid=assert(getProcessIDFromProcessName('FFRS-Win64-Shipping.exe'),'Resonance is not running')
+ if getOpenedProcessID()~=pid then openProcess(pid) end
+ local base=assert(getAddressSafe('FFRS-Win64-Shipping.exe'),'Game module unavailable')
+ local pe=base+readInteger(base+0x3c)
+ assert(readInteger(pe+8)==0x6A586B2F and readInteger(pe+0x50)==503013376,'Unsupported game build; stop and revalidate')
+ local pool=base+0x9CA1280
+ local names={}
+ local blocks=readInteger(pool+8)
+ assert(blocks and blocks&gt;=0 and blocks&lt;8192,'Invalid name pool')
+ local function name(id)
+  if not id or id&lt;0 then return '?' end
+  if names[id] then return names[id] end
+  local block=math.floor(id/65536);local off=(id%65536)*2
+  if block&gt;blocks then return '?' end
+  local p=readPointer(pool+0x10+block*8);if not p or p&lt;65536 then return '?' end
+  local h=readSmallInteger(p+off);if not h then return '?' end
+  if h&lt;0 then h=h+65536 end
+  local len=math.floor(h/64)
+  if len&gt;1023 then return '?' end
+  local s
+  if h%2==1 then s=readString(p+off+2,len*2,true)
+  else local b=readBytes(p+off+2,len,true);s=b and string.char(table.unpack(b)) end
+  names[id]=s or '?';return names[id]
+ end
+ assert(name(0)=='None','Name pool does not match this game')
+ local function oname(o) return o and o&gt;65536 and name(readInteger(o+0x18)) or '?' end
+ local classes={}
+ local function cname(o)
+  local c=o and readPointer(o+0x10)
+  if not c or c&lt;65536 then return '?' end
+  if not classes[c] then classes[c]=oname(c) end
+  return classes[c]
+ end
+ local world=readPointer(base+0x9AA0540)
+ assert(world and world&gt;65536 and cname(world)=='World','Wait for a loaded world')
+ local gi=readPointer(world+0x228)
+ assert(gi and gi&gt;65536,'Wait for the game instance')
+ local g=base+0x9D84DD0;local count=readInteger(g+0x14);local chunks=readPointer(g)
+ assert(count and count&gt;0 and count&lt;2000000 and chunks and chunks&gt;65536,'Invalid object array')
+ local chunkCount=readInteger(g+0x1c)
+ assert(chunkCount and chunkCount&gt;0 and chunkCount&lt;=math.ceil(2000000/65536),'Invalid object chunks')
+ local function at(i)
+  if i&lt;0 or i&gt;=count then return nil end
+  local ch=readPointer(chunks+math.floor(i/65536)*8)
+  return ch and ch&gt;65536 and readPointer(ch+(i%65536)*24) or nil
+ end
+ local function ismanager(o)
+  if not o or o&lt;65536 then return false end
+  local flags=readInteger(o+8)
+  return flags and (flags &amp; 0x10)==0 and cname(o)=='CPP_MuchaSaveDataManager' and readPointer(o+0x20)==gi
+ end
+ local cached=_G.FFRS_CT_SESSION
+ local manager,index
+ local tables={}
+ if cached and cached.pid==pid and cached.base==base and at(cached.index)==cached.manager and ismanager(cached.manager) and cached.tables then
+  manager,index=cached.manager,cached.index
+  tables=cached.tables
+ else
+  for i=0,count-1 do
+   local o=at(i)
+   if o and o&gt;65536 and cname(o)=='DataTable' then
+    local row=readPointer(o+0x28)
+    local rn=oname(row)
+    if rn=='CONSUMABLES_ITEM_DATA' or rn=='EQUIPMENT_ITEM_DATA' or rn=='UNIT_PARAMETER' or rn=='UNIT_LEVEL_PARAMETER_LIST' then
+     tables[#tables+1]={object=o,index=i,row=rn,name=oname(o)}
+    end
+   end
+   if ismanager(o) then assert(not manager,'Multiple active save managers; stop');manager,index=o,i end
+  end
+ end
+ assert(manager,'Active save manager not found; load a save first')
+ local save=readPointer(manager+0x60)
+ assert(save and save&gt;65536 and cname(save)=='CPP_MuchaGameSaveData','Active save data unavailable')
+ local flags=readInteger(save+8);assert(flags and (flags &amp; 0x10)==0,'Default object is not a save')
+ local gil=readInteger(save+0x28)
+ assert(gil and gil&gt;=0 and gil&lt;=2147483647,'Invalid money value')
+ local inv=readPointer(save+0xA8);local n=readInteger(save+0xB0);local cap=readInteger(save+0xB4)
+ assert(n and cap and n&gt;=0 and n&lt;=cap and cap&lt;=100000,'Invalid inventory array')
+ assert(n==0 or (inv and inv&gt;65536),'Invalid inventory pointer')
+ _G.FFRS_CT_SESSION={pid=pid,base=base,manager=manager,index=index,tables=tables}
+ return {at=at,oname=oname,cname=cname,name=name,tables=tables,pid=pid,base=base,manager=manager,save=save,gil=gil,inventory=inv,count=n,capacity=cap}
+end
+
+-- UE DataTable rows: sparse TMap&lt;FName, uint8*&gt; with allocation-bit checks.
+local function tableRows(s,o,expected)
+ assert(s.cname(o)=='DataTable' and s.oname(readPointer(o+0x28))==expected,'Data table changed; retry')
+ local m=o+0x30;local p=readPointer(m);local n=readInteger(m+8);local cap=readInteger(m+12)
+ assert(n and cap and n&gt;=0 and n&lt;=cap and cap&lt;=10000,'Invalid table size')
+ assert(n==0 or (p and p&gt;65536),'Invalid row data')
+ local bits=readPointer(m+0x20);if not bits or bits==0 then bits=m+0x10 end
+ local bitCount=readInteger(m+0x28);assert(bitCount and bitCount&gt;=n and bitCount&lt;=10000,'Invalid allocation flags')
+ local out={}
+ for i=0,n-1 do
+  local b=assert(readInteger(bits+math.floor(i/32)*4),'Unreadable allocation flags')
+  if (b &amp; (1 &lt;&lt; (i%32)))~=0 then
+   local a=p+i*24;local row=readPointer(a+8)
+   assert(row and row&gt;65536,'Invalid row pointer')
+   out[#out+1]={key=s.name(readInteger(a)),p=row}
+  end
+ end
+ return out
+end
+local function findTable(s,row)
+ local found
+ for _,t in ipairs(s.tables) do
+  if t.row==row then
+   assert(s.at(t.index)==t.object and s.oname(t.object)==t.name,'Table cache expired; reopen CT')
+   assert(not found,'Multiple matching tables; stop')
+   found=t.object
+  end
+ end
+ return assert(found,'Required table not loaded: '..row)
+end
+local function inventoryChoices(s)
+ local catalog={}
+ for _,kind in ipairs({'CONSUMABLES_ITEM_DATA','EQUIPMENT_ITEM_DATA'}) do
+  for _,r in ipairs(tableRows(s,findTable(s,kind),kind)) do
+   local id=readInteger(r.p+8);local typ=readBytes(r.p+0x70,1)
+   if id and id&gt;0 and (typ==1 or typ==3) and r.key~='?' then
+    assert(not catalog[id],'Duplicate item ID')
+    catalog[id]={name=r.key,kind=typ}
+   end
+  end
+ end
+ assert(s.count&lt;=5000,'Inventory too large')
+ local out,seen={},{}
+ for i=0,s.count-1 do
+  local a=s.inventory+i*8;local id=readInteger(a);local qty=readInteger(a+4)
+  assert(id and qty and qty&gt;=0,'Invalid inventory entry')
+  local item=catalog[id]
+  if item and qty&gt;0 then
+   assert(not seen[id],'Duplicate owned item ID');seen[id]=true
+   out[#out+1]={id=id,quantity=qty,address=a,name=item.name,kind=item.kind}
+  end
+ end
+ table.sort(out,function(a,b)return a.id&lt;b.id end)
+ return out
+end
+local function setItem(s,item,target)
+ assert(target and target==math.floor(target) and target&gt;=1 and target&lt;=99,'Quantity must be 1..99')
+ local now=connect()
+ assert(now.save==s.save and now.manager==s.manager and now.inventory==s.inventory and now.count==s.count,'Inventory changed; reopen the picker')
+ assert(readInteger(item.address)==item.id and readInteger(item.address+4)==item.quantity,'Item changed during input; retry')
+ if target==item.quantity then return end
+ assert(writeInteger(item.address+4,target),'Item write failed')
+ if readInteger(item.address+4)~=target then
+  writeInteger(item.address+4,item.quantity)
+  error('Item read-back failed; attempted to restore original quantity')
+ end
+end
+local function arrayAt(a,max)
+ local p=readPointer(a);local n=readInteger(a+8);local cap=readInteger(a+12)
+ assert(n and cap and n&gt;=0 and n&lt;=cap and cap&lt;=max,'Invalid array')
+ assert(n==0 or (p and p&gt;65536),'Invalid array pointer')
+ return p,n
+end
+local function partyPlan(s)
+ local party,n=arrayAt(s.save+0x90,8);assert(n&gt;0,'No party members')
+ local units,un=arrayAt(s.save+0x60,64)
+ local byId={}
+ for i=0,un-1 do local a=units+i*0xA0;local id=readInteger(a);assert(id and not byId[id],'Invalid unit ID');byId[id]=a end
+ local definitions={}
+ for _,r in ipairs(tableRows(s,findTable(s,'UNIT_PARAMETER'),'UNIT_PARAMETER')) do definitions[readInteger(r.p+8)]={curve=readInteger(r.p+0x3C),name=r.key} end
+ local curves={}
+ for _,r in ipairs(tableRows(s,findTable(s,'UNIT_LEVEL_PARAMETER_LIST'),'UNIT_LEVEL_PARAMETER_LIST')) do curves[readInteger(r.p+8)]=readPointer(r.p+0x10) end
+ local out,seen={},{}
+ for i=0,n-1 do
+  local id=readInteger(party+i*4)
+  assert(id and id&gt;=1001 and id&lt;=1008 and not seen[id],'Unexpected party member');seen[id]=true
+  local a=assert(byId[id],'Party member missing from save');local def=assert(definitions[id],'Missing unit definition')
+  local levels={}
+  for _,r in ipairs(tableRows(s,assert(curves[def.curve],'Missing curve'),'UNIT_LEVEL_PARAMETER')) do
+   local lv=readInteger(r.p+8);local xp=readInteger(r.p+12)
+   if lv and lv&gt;=1 and lv&lt;=99 then assert(not levels[lv] and xp and xp&gt;=0,'Invalid level curve');levels[lv]=xp end
+  end
+  local sum=0;for lv=1,99 do sum=sum+assert(levels[lv],'Incomplete level curve') end
+  assert(sum&gt;0 and sum&lt;=2147483647,'Invalid level-99 EXP')
+  local old=readInteger(a+4);assert(old and old&gt;=0,'Invalid current EXP')
+  out[#out+1]={id=id,address=a,experience=old,target=sum,name=def.name,partyIndex=i}
+ end
+ return out,party,n,units
+end
+local function checkCode(a,bytes)
+ local actual=readBytes(a,#bytes,true);assert(actual,'Game function unavailable')
+ for i=1,#bytes do assert(actual[i]==bytes[i],'Game function mismatch; stop') end
+end
+local function checkLevelFunctions(s)
+ checkCode(s.base+0x523BC00,{0x48,0x8B,0xC4,0x56,0x48,0x81,0xEC,0xD0,0,0,0})
+ checkCode(s.base+0x524B3A0,{0x48,0x89,0x5C,0x24,0x18,0x48,0x89,0x74,0x24,0x20,0x57,0x48,0x81,0xEC,0xD0,1,0,0})
+end
+local function setParty99(s,plan,party,n,units)
+ checkLevelFunctions(s)
+ -- Preflight all targets with the game's own EXP-to-level calculation.
+ for _,u in ipairs(plan) do
+  assert(executeCodeEx(0,5000,s.base+0x523BC00,u.id,u.target)==99,'Game rejected level-99 threshold')
+ end
+ local report={}
+ for _,u in ipairs(plan) do
+  local now=connect();local pp,pn=arrayAt(now.save+0x90,8);local up=arrayAt(now.save+0x60,64)
+  assert(now.save==s.save and now.manager==s.manager and pp==party and pn==n and up==units,'Party/save changed; stop')
+  for _,member in ipairs(plan) do assert(readInteger(party+member.partyIndex*4)==member.id,'Party changed; stop') end
+  assert(readInteger(u.address)==u.id and readInteger(u.address+4)==u.experience,'Character EXP changed; retry')
+  if u.experience&lt;u.target then
+   -- Native SetPlayableUnitExperience(UnitId, EXP, isMaxStatusSet=false):
+   -- updates save EXP and refreshes the live character parameters/skills.
+   executeCodeEx(0,10000,s.base+0x524B3A0,u.id,u.target,0)
+   assert(readInteger(u.address+4)==u.target,'EXP update did not finish; stop and check game')
+  end
+  local xp=readInteger(u.address+4)
+  local lv=executeCodeEx(0,5000,s.base+0x523BC00,u.id,xp)
+  assert(lv==99,'Level verification failed; stop and check game')
+  report[#report+1]=string.format('%s（ID %d）：Lv.%d／EXP %d',u.name,u.id,lv,xp)
+ end
+ return report
+end
+
+local s=connect()
+local plan,party,n,units=partyPlan(s)
+local answer=inputQuery('目前隊伍升至 Lv.99','只修改目前隊伍 '..n..' 名角色。請停在選單；輸入 99 執行，取消則不修改：','99')
+if not answer then return end
+assert(tonumber(answer)==99,'Enter 99 or cancel')
+local report=setParty99(s,plan,party,n,units)
+showMessage(table.concat(report,'\n')..'\n請重開角色選單核對，確認後另存新欄位。取消勾選不會還原。')
 
 {$asm}
 [DISABLE]

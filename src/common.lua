@@ -54,11 +54,20 @@ local function connect()
  end
  local cached=_G.FFRS_CT_SESSION
  local manager,index
- if cached and cached.pid==pid and cached.base==base and at(cached.index)==cached.manager and ismanager(cached.manager) then
+ local tables={}
+ if cached and cached.pid==pid and cached.base==base and at(cached.index)==cached.manager and ismanager(cached.manager) and cached.tables then
   manager,index=cached.manager,cached.index
+  tables=cached.tables
  else
   for i=0,count-1 do
    local o=at(i)
+   if o and o>65536 and cname(o)=='DataTable' then
+    local row=readPointer(o+0x28)
+    local rn=oname(row)
+    if rn=='CONSUMABLES_ITEM_DATA' or rn=='EQUIPMENT_ITEM_DATA' or rn=='UNIT_PARAMETER' or rn=='UNIT_LEVEL_PARAMETER_LIST' then
+     tables[#tables+1]={object=o,index=i,row=rn,name=oname(o)}
+    end
+   end
    if ismanager(o) then assert(not manager,'Multiple active save managers; stop');manager,index=o,i end
   end
  end
@@ -71,6 +80,6 @@ local function connect()
  local inv=readPointer(save+0xA8);local n=readInteger(save+0xB0);local cap=readInteger(save+0xB4)
  assert(n and cap and n>=0 and n<=cap and cap<=100000,'Invalid inventory array')
  assert(n==0 or (inv and inv>65536),'Invalid inventory pointer')
- _G.FFRS_CT_SESSION={pid=pid,base=base,manager=manager,index=index}
- return {pid=pid,base=base,manager=manager,save=save,gil=gil,inventory=inv,count=n,capacity=cap}
+ _G.FFRS_CT_SESSION={pid=pid,base=base,manager=manager,index=index,tables=tables}
+ return {at=at,oname=oname,cname=cname,name=name,tables=tables,pid=pid,base=base,manager=manager,save=save,gil=gil,inventory=inv,count=n,capacity=cap}
 end
