@@ -23,7 +23,7 @@ GAMEPLAY_HELPER_SOURCES = (
 
 
 BATTLE_HELPER_SOURCES = (
-    "game_thread_dispatch.lua", "battle_objects.lua", "battle_calls.lua",
+    "game_thread_dispatch.lua", "battle_direct_links.lua", "battle_objects.lua", "battle_calls.lua",
     "battle_actions.lua", "result_actions.lua", "battle_runtime.lua",
 )
 

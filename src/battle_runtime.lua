@@ -8,7 +8,7 @@ local function startBattleAutomation(mode)
   old.modes[mode]=true
   return old
  end
- local s=connect()
+ local s=connect(true)
  local objects=battleObjects(s)
  local thread=createGameThread(s)
  local calls=battleCalls(s,objects,thread)

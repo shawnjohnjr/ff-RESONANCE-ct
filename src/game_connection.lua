@@ -1,6 +1,6 @@
 -- FFRS retail Steam build 24250053. Read-only lookup, no injected game calls.
 -- SDK reference: PolarWizard/final-fantasy-resonance-fix (MIT).
-local function connect()
+local function connect(battleOnly)
  local pid=assert(getProcessIDFromProcessName('FFRS-Win64-Shipping.exe'),'Resonance is not running')
  if getOpenedProcessID()~=pid then openProcess(pid) end
  local base=assert(getAddressSafe('FFRS-Win64-Shipping.exe'),'Game module unavailable')
@@ -14,7 +14,8 @@ local function connect()
   if not id or id<0 then return '?' end
   if names[id] then return names[id] end
   local block=math.floor(id/65536);local off=(id%65536)*2
-  if block>blocks then return '?' end
+  if block>blocks then blocks=readInteger(pool+8) or -1 end
+  if block>blocks or blocks>=8192 then return '?' end
   local p=readPointer(pool+0x10+block*8);if not p or p<65536 then return '?' end
   local h=readSmallInteger(p+off);if not h then return '?' end
   if h<0 then h=h+65536 end
@@ -43,10 +44,13 @@ local function connect()
  local chunkCount=readInteger(g+0x1c)
  assert(chunkCount and chunkCount>0 and chunkCount<=math.ceil(2000000/65536),'Invalid object chunks')
  local function at(i)
-  if i<0 or i>=count then return nil end
+  local currentCount=battleOnly and readInteger(g+0x14) or count
+  if not i or not currentCount or currentCount>2000000 or i<0 or i>=currentCount then return nil end
   local ch=readPointer(chunks+math.floor(i/65536)*8)
   return ch and ch>65536 and readPointer(ch+(i%65536)*24) or nil
  end
+ -- Battle automation does not use inventory tables or save-data writes.
+ if battleOnly then return {at=at,oname=oname,cname=cname,name=name,pid=pid,base=base} end
  local function ismanager(o)
   if not o or o<65536 then return false end
   local flags=readInteger(o+8)

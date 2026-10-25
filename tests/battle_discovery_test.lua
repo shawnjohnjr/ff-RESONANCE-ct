@@ -64,4 +64,17 @@ for _=1,20 do b.prune(8) end
 clockStep=20;b.scan(4096,{attack=true});assert(b.discovery.inspected<=32)
 clockStep=0;memory[registry+0x14]=0;b.scan(256);assert(b.discovery.inspected==0)
 b.clear();for _,cache in ipairs({b.interfaces,b.views,b.results,b.roots,b.functions})do assert(next(cache)==nil)end
-print('Battle discovery tests passed')
+-- Resolve a native function from its class even when it occupies a distant slot.
+memory[registry+0x14]=count
+local owner,fn,fnClass=0x3000000,0x3100000,0x3200000
+object(31,owner,0,1,'CPP_BFL_Battle');object(32,fnClass,0,1,'Function')
+object(9500,fn,fnClass,1,'GetBattleUnitByUniqueId')
+memory[owner+0x48]=fn;memory[fn+0x20]=owner;memory[fn+0xB0]=0x2400
+memory[fn+0x28]=fn -- A malformed child cycle must remain bounded.
+b.reflectClass(owner)
+assert(b.functions.GetBattleUnitByUniqueId and b.functions.GetBattleUnitByUniqueId.object==fn)
+b.clear();memory[fn+0xB0]=0x400;b.reflectClass(owner)
+assert(not b.functions.GetBattleUnitByUniqueId,'Reject mismatched static flags')
+b.clear();memory[fn+0xB0]=0x2400;memory[fn+0x20]=fnClass;b.reflectClass(owner)
+assert(not b.functions.GetBattleUnitByUniqueId,'Reject a child owned by another class')
+print('Battle discovery and class reflection tests passed')
