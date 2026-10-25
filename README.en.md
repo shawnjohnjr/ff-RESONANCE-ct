@@ -13,7 +13,7 @@ For Steam **build 24250053**. Tested on macOS with standard CrossOver and Window
 | 03 | Read-only inventory list: internal item IDs and quantities |
 | 04 | Select an owned item and change its quantity: 1–99 |
 | 05 | Raise current party members to Lv.99 and recalculate their parameters through game functions |
-| 06 | Endgame equipment pack: top up 8 weapons, 3 armor types, and 4 accessories |
+| 06 | Endgame equipment pack: top up 8 weapons, 5 armor types, and 7 accessories |
 | 07 | Automatic basic Attack: runs while checked; uncheck to stop |
 | 08 | Automatically confirm battle results: standalone or together with entry 07 |
 
@@ -56,6 +56,18 @@ All eight weapons include the game's 99,999 damage-cap effect. Weapon types were
 
 - Armor: Tatenashi Armor+ (11397), Mirage Vest+ (11097), Lordly Robes+ (11597).
 - Accessories: Super Ribbon (12101), Ultima Reactor (12095), Genji Gloves (12096), Omega Badge (12103).
+
+The following equipment from the [Twelve Arms / arena rewards guide](https://forum.gamer.com.tw/C.php?bsn=179&snA=92417&tnum=1) is also included, with a minimum of 8 each. IDs and categories are checked against the game's equipment table.
+
+| English / Traditional Chinese name | ID | Category |
+|---|---:|---|
+| Lorica Sancta / 神聖甲 (Japanese: ホーリーメイル) | 11033 | Light armor |
+| Lorica Apocalyptica / 終焉之鎧 | 11329 | Heavy armor |
+| Gold Hairpin+ / 黃金頭飾·改 | 12097 | Accessory |
+| Thunder God’s Earrings / 雷帝的耳環 | 12080 | Accessory |
+| Ribbon / 緞帶 | 12065 | Accessory |
+
+Ribbon and Super Ribbon remain separate items. The Shinryu reward mentioned in the guide is excluded from this equipment pack. Names use the game's English and Traditional Chinese localization rather than literal translations from Japanese.
 
 This is a general endgame selection based on stats, effects, and equipment compatibility. Specialized builds may suit particular battles better. Three armor categories are provided so each character can choose a compatible type.
 
@@ -172,6 +184,7 @@ What was changed:
 - Entry 05: Rain and Lasswell changed from 0 to 15,848,325 EXP. The game's calculation and live character fields returned Lv.99, and the user confirmed both menu levels.
 - Live character parameters updated. Repeating the Lv.99 operation left saved character bytes unchanged.
 - Equipment pack: 64 pieces across 15 equipment IDs were added and read back correctly. Existing inventory quantities, Gil, and character data stayed unchanged. Cancellation made no change; repeating the operation added zero pieces and preserved inventory bytes. All new equipment appeared in the bilingual picker data.
+- Expanded pack live test: added 8 each of Lorica Sancta, Lorica Apocalyptica, Gold Hairpin+, Thunder God’s Earrings, and Ribbon (40 pieces). All five categories and bilingual picker labels matched. Gil, character data, and other inventory quantities were unchanged. Cancellation wrote nothing; repeating added zero pieces and preserved inventory bytes. The user also confirmed that all five items display correctly in the game menu.
 - **The in-game item/new-equipment display and persistence after saving and reloading have not been verified.** Item tests supplied choices and input values to the actual CT scripts; manual interaction with the selection dialog has not been claimed as tested.
 
 ## Source layout
