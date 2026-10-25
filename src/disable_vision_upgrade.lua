@@ -1,0 +1,1 @@
+if _G.FFRS_VISION_UPGRADE and _G.FFRS_VISION_UPGRADE.running then _G.FFRS_VISION_UPGRADE.stop() end

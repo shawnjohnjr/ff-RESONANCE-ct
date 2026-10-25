@@ -16,8 +16,11 @@ For Steam **build 24250053**. Tested on macOS with standard CrossOver and Window
 | 06 | Endgame equipment pack: top up 8 weapons, 5 armor types, and 7 accessories |
 | 07 | Automatic basic Attack: runs while checked; uncheck to stop |
 | 08 | Automatically confirm battle results: standalone or together with entry 07 |
+| 09 | Upgrade owned visions: maximum awakening/current-party MR, one vision or all owned |
 
 Entries are independent and disabled by default. Entries 01–06 run once, without freezing values; unchecking does not undo changes. Uncheck and recheck to run them again. Entries 07 and 08 run while checked and can be disabled separately. Their shared callback is removed when both are disabled.
+
+Entry 09 performs a one-time upgrade in batches. Turn off 07/08 first, make the selections, then keep the game foreground until completion. Unchecking stops remaining operations without undoing completed upgrades.
 
 ## Usage
 
@@ -78,6 +81,20 @@ The script validates all equipment IDs and categories before granting items, the
 This affects only main characters currently in the party. It does not unlock characters who have not joined or modify visions. It sums each character's level table to determine the EXP needed for Lv.99, checks that threshold with the game's level calculation, then calls `SetPlayableUnitExperience` to update saved EXP and live character parameters.
 
 No battle is needed for the change to take effect. **Current HP and MP are not automatically refilled**; maximum HP/MP and other parameters are recalculated. Characters already at the target EXP are not rewritten. If execution fails midway, inspect the character state: this is not an atomic operation across the party, and completed updates are not automatically undone.
+
+### Upgrade owned visions
+
+Entry 09 selects one owned vision or all owned visions, then maximum awakening, maximum current-party MR, or both. Labels use the official English/Traditional Chinese names; unknown names retain their IDs.
+
+Turn off entries 07/08 and remain at the vision menu on a map. After accepting the prompt, return focus to the game and avoid changing maps, party members or vision growth until the completion message. The operation stops after two minutes. Reopen the vision menu to verify, then save to a new slot.
+
+- Only owned visions are upgraded. No visions are unlocked. MR applies only to current party members; other characters retain their points.
+- Limits come from the game's `GetMaxMasteryPoint`/`GetMaxLevel`. Awakening and per-character mastery are separate; MRP requirements are not assumed identical across visions. Already-maxed entries are skipped.
+- Uses native `SetAwakeningMasteryPoint`/`SetSynchroMasteryPoint` and verifies each point value and level. No magicite or Gil is consumed.
+- Validates world, save, ownership, party, object lifetimes and original points. Battles or mismatched data reject the operation. Calls run on the game-window thread and are sent only while the game is foreground.
+- This is not an atomic batch. Cancellation, focus loss or an error can leave earlier upgrades completed; inspect the game before saving or retrying. Canceling a selection dialog makes no changes.
+
+Live validation (2026-10-26): Leah awakening was tested first, then formal entry 09 completed 11 upgrades: the other two awakenings and three party members × three visions for MR. The user confirmed Tronn, Leah and Warrior of Light at 3 stars and current-party MR maxed; native getters returned MR 9. Owned IDs, non-party points, inventory and Gil were unchanged. Canceling either selection dialog also preserved the data. Persistence after saving and restarting the game has not been separately tested.
 
 ### Automatic basic Attack
 
@@ -201,6 +218,8 @@ What was changed:
 ## Source layout
 
 - `src/game_thread_dispatch.lua`: game-window thread calls with memory checks and deadlines.
+- `src/vision_names.lua`, `vision_progression.lua`, `vision_upgrade.lua`: vision labels, owned data/upgrade planning and native execution; `upgrade_owned_visions.lua` handles dialogs.
+- `tests/vision_progression_test.lua`: selection scope, current-party restriction, per-vision limits, no-op repeats and invalid data.
 - `src/battle_direct_links.lua`: validated subsystem maps, weak battle-widget links, and direct command/result/root lookup.
 - `src/battle_objects.lua`: battle object/function discovery and command context validation.
 - `src/battle_calls.lua`: shared native/Blueprint function validation and guarded calls.
@@ -246,3 +265,5 @@ python3 build.py
 The repository does not include game files, personal saves, memory dumps, or local test logs, and the CT does not change CrossOver settings. The CT has no startup autorun Lua; actions execute only when enabled manually.
 
 See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for data-layout references and licensing. This is an unofficial tool and is not affiliated with Square Enix.
+
+`VISION_HELPER_SOURCES` defines vision helper assembly separately from continuous battle polling. Extend the corresponding vision modules without growing the inventory or character-level modules.

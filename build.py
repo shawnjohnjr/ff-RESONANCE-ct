@@ -28,6 +28,12 @@ BATTLE_HELPER_SOURCES = (
 )
 
 
+VISION_HELPER_SOURCES = (
+    "game_thread_dispatch.lua", "battle_direct_links.lua", "battle_objects.lua", "battle_calls.lua",
+    "vision_names.lua", "vision_progression.lua", "vision_upgrade.lua",
+)
+
+
 @dataclass(frozen=True)
 class TableEntry:
     entry_id: int
@@ -65,6 +71,11 @@ TABLE_ENTRIES = (
         8, "08 自動確認戰後結算（獨立開關）",
         "enable_auto_results.lua", helper_sources=BATTLE_HELPER_SOURCES,
         disable_source="disable_auto_results.lua",
+    ),
+    TableEntry(
+        9, "09 強化已持有幻兵（覺醒／目前隊伍 MR）",
+        "upgrade_owned_visions.lua", helper_sources=VISION_HELPER_SOURCES,
+        disable_source="disable_vision_upgrade.lua",
     ),
 )
 
