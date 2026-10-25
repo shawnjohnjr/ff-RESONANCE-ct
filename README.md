@@ -1,5 +1,7 @@
 # FINAL FANTASY RESONANCE — Cheat Engine Table
 
+**繁體中文** | [English](README.en.md)
+
 適用 Steam **build 24250053**。已於 macOS 標準版 CrossOver、Windows Cheat Engine 7.7 x64 測試。
 
 ## 功能
@@ -62,6 +64,52 @@ CT 自動連接 `FFRS-Win64-Shipping.exe`，檢查執行檔版本，從目前世
 只處理目前隊伍中的主角群，不解鎖未加入角色、不修改幻兵。由各角色升級表累計至 Lv.99 所需 EXP，先以遊戲的等級計算函式核對，再呼叫 `SetPlayableUnitExperience` 更新存檔 EXP 與即時角色能力。
 
 不需要打完一場戰鬥才生效。**目前 HP／MP 不會自動補滿**；最大 HP／MP 與能力會重新計算。已達目標經驗值的角色不重複寫入。若執行中途失敗，應檢查角色狀態；這不是跨角色的原子交易，也不會自動復原已完成角色。
+
+## CrossOver 啟動時提示缺少 VC++ x64
+
+### 本次遇到的原因
+
+在標準版 CrossOver 26.3、Steam build 24250053 的測試環境，啟動器顯示：
+
+```text
+The following component(s) are required to run this program:
+Microsoft Visual C++ 2015-2022 Redistributable (x64)
+```
+
+當時 bottle 已安裝 Microsoft VC++ runtime；問題是啟動器檢查到的 DLL 版本仍不符合要求。以下為本次檢查結果，不代表所有 CrossOver 版本都相同：
+
+| 檢查項目 | 版本 |
+|---|---|
+| 此遊戲啟動器要求的最低版本 | 14.42.34438 |
+| CrossOver 內建的 `msvcp140_2.dll`、`vcruntime140_1.dll` | 14.42.34433.0 |
+| bottle 中已安裝的 Microsoft 原生 runtime DLL | 14.51.36247.0 |
+
+因此，只確認「已安裝 VC++」還不夠，也需要確認啟動時選用了哪一套 DLL。這次讓遊戲優先使用已安裝的 Microsoft 原生 DLL 後，順利進入著色器編譯與遊戲地圖。
+
+### 成功使用的啟動方式
+
+1. 正常退出其他 CrossOver 版本中的 Steam／遊戲，再用**標準版 CrossOver** 開啟遊戲所在 bottle 的 Steam 並登入。
+2. 確認同一 bottle 已具備相容的 **x64** Microsoft Visual C++ v14 Redistributable。若尚未安裝，從 [Microsoft 官方下載頁](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170) 取得 x64 安裝程式，透過 CrossOver 在該 bottle 執行。套件架構應配合 Windows 遊戲的 x64 架構。
+3. 遊戲尚未執行時，在 macOS「終端機」使用下列命令。先按自己的安裝位置調整前三個變數；若 CrossOver 裝在系統 Applications，第一行改成 `CROSSOVER_APP="/Applications/CrossOver.app"`。
+
+```sh
+CROSSOVER_APP="$HOME/Applications/CrossOver.app"
+BOTTLE_NAME="Steam"
+GAME_EXE='C:\Program Files (x86)\Steam\steamapps\common\FINAL FANTASY RESONANCE\FFRS.exe'
+
+SteamAppId=3259780 SteamGameId=3259780 \
+  "$CROSSOVER_APP/Contents/SharedSupport/CrossOver/bin/wine" \
+  --bottle "$BOTTLE_NAME" --no-update \
+  --dll 'msvcp140,msvcp140_1,msvcp140_2,vcruntime140,vcruntime140_1=n,b' \
+  --debugmsg '-all' \
+  --cx-app "$GAME_EXE"
+```
+
+`n,b` 表示先嘗試 Microsoft 原生 DLL，再嘗試 CrossOver/Wine 內建實作；它不會自行安裝缺少的 runtime。`--no-update` 避免這次啟動觸發 bottle 更新。命令明確使用標準版 CrossOver 的執行檔。
+
+此 DLL 選擇設定只作用於這次啟動及其繼承設定的子程序，沒有寫入永久的 bottle DLL 覆寫設定。下次直接按 Steam 的「開始遊戲」不一定會沿用，需要再次使用此命令。本次未重新安裝遊戲，也未修改 CrossOver MGVF 的設定。
+
+若標準版與 MGVF 共用同一個 bottle，安裝／修復 runtime 仍會改動共用的 Windows 環境。本次 bottle 已有合適的原生 runtime，成功的關鍵是這個單次啟動的 DLL 選擇設定。以上是此 build 的實測處理方式；更新遊戲或 CrossOver 後應重新確認版本與錯誤原因。
 
 ## 驗證狀態（2026-10-26）
 
