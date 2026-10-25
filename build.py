@@ -3,7 +3,7 @@ import xml.etree.ElementTree as E
 ROOT=Path(__file__).resolve().parent
 common=(ROOT/'src/common.lua').read_text(encoding='utf-8')
 helpers=(ROOT/'src/item_names.lua').read_text(encoding='utf-8')+'\n'+(ROOT/'src/editors.lua').read_text(encoding='utf-8')
-labels=['01 唯讀檢查：目前 Gil 與背包筆數','02 設定持有 Gil','03 唯讀背包清單：內部 ID 與數量','04 選擇道具並修改數量（英文／繁中／已持有）','05 目前隊伍升至 Lv.99']
+labels=['01 唯讀檢查：目前 Gil 與背包筆數','02 設定持有 Gil','03 唯讀背包清單：內部 ID 與數量','04 選擇道具並修改數量（英文／繁中／已持有）','05 目前隊伍升至 Lv.99','06 全角色終盤裝備包（補足背包）']
 root=E.Element('CheatTable',CheatEngineTableVersion='45')
 entries=E.SubElement(root,'CheatEntries')
 for i,label in enumerate(labels,1):

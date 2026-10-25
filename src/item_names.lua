@@ -1,4 +1,5 @@
 -- Official item labels from installed Steam build 24250053, en / zh-Hant.
+-- Two untranslated zh-Hant placeholders use explicitly marked provisional translations.
 -- Only item-name strings are included; no descriptions, dialogue, or game assets.
 local itemNames = {
  [1]={en="Potion",zh="治療劑",kind=1},
@@ -248,7 +249,7 @@ local itemNames = {
  [10696]={en="Fire Birch+",zh="烈焰鞭·改",kind=3},
  [10697]={en="Ancient Whip",zh="古老的鞭",kind=3},
  [10698]={en="Fire Birch",zh="烈焰鞭",kind=3},
- [10699]={en="Rugged Whip",zh="オールドウィップ",kind=3},
+ [10699]={en="Rugged Whip",zh="粗獷長鞭（暫譯）",kind=3},
  [10700]={en="Renatus Duo",zh="雷納圖斯二型",kind=3},
  [10701]={en="Peacemaker",zh="調解者",kind=3},
  [10702]={en="Firefly",zh="螢火蟲",kind=3},
@@ -419,7 +420,7 @@ local itemNames = {
  [12006]={en="Fire Sprite Earrings",zh="火精的穿孔耳環",kind=3},
  [12007]={en="Ring of Retaliation",zh="反物戒指",kind=3},
  [12008]={en="Aeolian Misanga",zh="疾風之手帶",kind=3},
- [12009]={en="Libra Lenses",zh="ライブラレンズ",kind=3},
+ [12009]={en="Libra Lenses",zh="偵測透鏡（暫譯）",kind=3},
  [12010]={en="Chocobo Down Charm",zh="陸行鳥羽飾",kind=3},
  [12011]={en="Reflect Ring",zh="反射指環",kind=3},
  [12012]={en="Protect Ring",zh="防護指環",kind=3},
