@@ -1,0 +1,299 @@
+<?xml version='1.0' encoding='utf-8'?>
+<CheatTable CheatEngineTableVersion="45">
+  <CheatEntries>
+    <CheatEntry>
+      <ID>1</ID>
+      <Description>"01 唯讀檢查：目前 Gil 與背包筆數"</Description>
+      <VariableType>Auto Assembler Script</VariableType>
+      <AssemblerScript>[ENABLE]
+{$lua}
+if syntaxcheck then return end
+-- FFRS retail Steam build 24250053. Read-only lookup, no injected game calls.
+-- SDK reference: PolarWizard/final-fantasy-resonance-fix (MIT).
+local function connect()
+ local pid=assert(getProcessIDFromProcessName('FFRS-Win64-Shipping.exe'),'Resonance is not running')
+ if getOpenedProcessID()~=pid then openProcess(pid) end
+ local base=assert(getAddressSafe('FFRS-Win64-Shipping.exe'),'Game module unavailable')
+ local pe=base+readInteger(base+0x3c)
+ assert(readInteger(pe+8)==0x6A586B2F and readInteger(pe+0x50)==503013376,'Unsupported game build; stop and revalidate')
+ local pool=base+0x9CA1280
+ local names={}
+ local blocks=readInteger(pool+8)
+ assert(blocks and blocks&gt;=0 and blocks&lt;8192,'Invalid name pool')
+ local function name(id)
+  if not id or id&lt;0 then return '?' end
+  if names[id] then return names[id] end
+  local block=math.floor(id/65536);local off=(id%65536)*2
+  if block&gt;blocks then return '?' end
+  local p=readPointer(pool+0x10+block*8);if not p or p&lt;65536 then return '?' end
+  local h=readSmallInteger(p+off);if not h then return '?' end
+  if h&lt;0 then h=h+65536 end
+  local len=math.floor(h/64)
+  if len&gt;1023 then return '?' end
+  local s
+  if h%2==1 then s=readString(p+off+2,len*2,true)
+  else local b=readBytes(p+off+2,len,true);s=b and string.char(table.unpack(b)) end
+  names[id]=s or '?';return names[id]
+ end
+ assert(name(0)=='None','Name pool does not match this game')
+ local function oname(o) return o and o&gt;65536 and name(readInteger(o+0x18)) or '?' end
+ local classes={}
+ local function cname(o)
+  local c=o and readPointer(o+0x10)
+  if not c or c&lt;65536 then return '?' end
+  if not classes[c] then classes[c]=oname(c) end
+  return classes[c]
+ end
+ local world=readPointer(base+0x9AA0540)
+ assert(world and world&gt;65536 and cname(world)=='World','Wait for a loaded world')
+ local gi=readPointer(world+0x228)
+ assert(gi and gi&gt;65536,'Wait for the game instance')
+ local g=base+0x9D84DD0;local count=readInteger(g+0x14);local chunks=readPointer(g)
+ assert(count and count&gt;0 and count&lt;2000000 and chunks and chunks&gt;65536,'Invalid object array')
+ local chunkCount=readInteger(g+0x1c)
+ assert(chunkCount and chunkCount&gt;0 and chunkCount&lt;=math.ceil(2000000/65536),'Invalid object chunks')
+ local function at(i)
+  if i&lt;0 or i&gt;=count then return nil end
+  local ch=readPointer(chunks+math.floor(i/65536)*8)
+  return ch and ch&gt;65536 and readPointer(ch+(i%65536)*24) or nil
+ end
+ local function ismanager(o)
+  if not o or o&lt;65536 then return false end
+  local flags=readInteger(o+8)
+  return flags and (flags &amp; 0x10)==0 and cname(o)=='CPP_MuchaSaveDataManager' and readPointer(o+0x20)==gi
+ end
+ local cached=_G.FFRS_CT_SESSION
+ local manager,index
+ if cached and cached.pid==pid and cached.base==base and at(cached.index)==cached.manager and ismanager(cached.manager) then
+  manager,index=cached.manager,cached.index
+ else
+  for i=0,count-1 do
+   local o=at(i)
+   if ismanager(o) then assert(not manager,'Multiple active save managers; stop');manager,index=o,i end
+  end
+ end
+ assert(manager,'Active save manager not found; load a save first')
+ local save=readPointer(manager+0x60)
+ assert(save and save&gt;65536 and cname(save)=='CPP_MuchaGameSaveData','Active save data unavailable')
+ local flags=readInteger(save+8);assert(flags and (flags &amp; 0x10)==0,'Default object is not a save')
+ local gil=readInteger(save+0x28)
+ assert(gil and gil&gt;=0 and gil&lt;=2147483647,'Invalid money value')
+ local inv=readPointer(save+0xA8);local n=readInteger(save+0xB0);local cap=readInteger(save+0xB4)
+ assert(n and cap and n&gt;=0 and n&lt;=cap and cap&lt;=100000,'Invalid inventory array')
+ assert(n==0 or (inv and inv&gt;65536),'Invalid inventory pointer')
+ _G.FFRS_CT_SESSION={pid=pid,base=base,manager=manager,index=index}
+ return {pid=pid,base=base,manager=manager,save=save,gil=gil,inventory=inv,count=n,capacity=cap}
+end
+
+local s=connect()
+showMessage(string.format('唯讀檢查通過\nGil：%d\n背包記錄：%d\n遊戲 build：24250053\n未修改遊戲資料。',s.gil,s.count))
+
+{$asm}
+[DISABLE]
+</AssemblerScript>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>2</ID>
+      <Description>"02 設定持有 Gil（輸入目標；寫入讀回已驗證）"</Description>
+      <VariableType>Auto Assembler Script</VariableType>
+      <AssemblerScript>[ENABLE]
+{$lua}
+if syntaxcheck then return end
+-- FFRS retail Steam build 24250053. Read-only lookup, no injected game calls.
+-- SDK reference: PolarWizard/final-fantasy-resonance-fix (MIT).
+local function connect()
+ local pid=assert(getProcessIDFromProcessName('FFRS-Win64-Shipping.exe'),'Resonance is not running')
+ if getOpenedProcessID()~=pid then openProcess(pid) end
+ local base=assert(getAddressSafe('FFRS-Win64-Shipping.exe'),'Game module unavailable')
+ local pe=base+readInteger(base+0x3c)
+ assert(readInteger(pe+8)==0x6A586B2F and readInteger(pe+0x50)==503013376,'Unsupported game build; stop and revalidate')
+ local pool=base+0x9CA1280
+ local names={}
+ local blocks=readInteger(pool+8)
+ assert(blocks and blocks&gt;=0 and blocks&lt;8192,'Invalid name pool')
+ local function name(id)
+  if not id or id&lt;0 then return '?' end
+  if names[id] then return names[id] end
+  local block=math.floor(id/65536);local off=(id%65536)*2
+  if block&gt;blocks then return '?' end
+  local p=readPointer(pool+0x10+block*8);if not p or p&lt;65536 then return '?' end
+  local h=readSmallInteger(p+off);if not h then return '?' end
+  if h&lt;0 then h=h+65536 end
+  local len=math.floor(h/64)
+  if len&gt;1023 then return '?' end
+  local s
+  if h%2==1 then s=readString(p+off+2,len*2,true)
+  else local b=readBytes(p+off+2,len,true);s=b and string.char(table.unpack(b)) end
+  names[id]=s or '?';return names[id]
+ end
+ assert(name(0)=='None','Name pool does not match this game')
+ local function oname(o) return o and o&gt;65536 and name(readInteger(o+0x18)) or '?' end
+ local classes={}
+ local function cname(o)
+  local c=o and readPointer(o+0x10)
+  if not c or c&lt;65536 then return '?' end
+  if not classes[c] then classes[c]=oname(c) end
+  return classes[c]
+ end
+ local world=readPointer(base+0x9AA0540)
+ assert(world and world&gt;65536 and cname(world)=='World','Wait for a loaded world')
+ local gi=readPointer(world+0x228)
+ assert(gi and gi&gt;65536,'Wait for the game instance')
+ local g=base+0x9D84DD0;local count=readInteger(g+0x14);local chunks=readPointer(g)
+ assert(count and count&gt;0 and count&lt;2000000 and chunks and chunks&gt;65536,'Invalid object array')
+ local chunkCount=readInteger(g+0x1c)
+ assert(chunkCount and chunkCount&gt;0 and chunkCount&lt;=math.ceil(2000000/65536),'Invalid object chunks')
+ local function at(i)
+  if i&lt;0 or i&gt;=count then return nil end
+  local ch=readPointer(chunks+math.floor(i/65536)*8)
+  return ch and ch&gt;65536 and readPointer(ch+(i%65536)*24) or nil
+ end
+ local function ismanager(o)
+  if not o or o&lt;65536 then return false end
+  local flags=readInteger(o+8)
+  return flags and (flags &amp; 0x10)==0 and cname(o)=='CPP_MuchaSaveDataManager' and readPointer(o+0x20)==gi
+ end
+ local cached=_G.FFRS_CT_SESSION
+ local manager,index
+ if cached and cached.pid==pid and cached.base==base and at(cached.index)==cached.manager and ismanager(cached.manager) then
+  manager,index=cached.manager,cached.index
+ else
+  for i=0,count-1 do
+   local o=at(i)
+   if ismanager(o) then assert(not manager,'Multiple active save managers; stop');manager,index=o,i end
+  end
+ end
+ assert(manager,'Active save manager not found; load a save first')
+ local save=readPointer(manager+0x60)
+ assert(save and save&gt;65536 and cname(save)=='CPP_MuchaGameSaveData','Active save data unavailable')
+ local flags=readInteger(save+8);assert(flags and (flags &amp; 0x10)==0,'Default object is not a save')
+ local gil=readInteger(save+0x28)
+ assert(gil and gil&gt;=0 and gil&lt;=2147483647,'Invalid money value')
+ local inv=readPointer(save+0xA8);local n=readInteger(save+0xB0);local cap=readInteger(save+0xB4)
+ assert(n and cap and n&gt;=0 and n&lt;=cap and cap&lt;=100000,'Invalid inventory array')
+ assert(n==0 or (inv and inv&gt;65536),'Invalid inventory pointer')
+ _G.FFRS_CT_SESSION={pid=pid,base=base,manager=manager,index=index}
+ return {pid=pid,base=base,manager=manager,save=save,gil=gil,inventory=inv,count=n,capacity=cap}
+end
+
+local s=connect()
+local answer=inputQuery('設定持有 Gil','目前 '..s.gil..' Gil。輸入目標金額（0–9,999,999），取消則不修改：',tostring(s.gil))
+if not answer then return end
+local target=tonumber(answer)
+assert(target and target==math.floor(target) and target&gt;=0 and target&lt;=9999999,'Enter a whole number from 0 to 9999999')
+local current=connect()
+assert(current.save==s.save and current.manager==s.manager and current.gil==s.gil,'Save or money changed during input; retry on the map')
+if target==s.gil then showMessage('金額相同，未修改。');return end
+assert(writeInteger(s.save+0x28,target),'Money write failed')
+if readInteger(s.save+0x28)~=target then
+ writeInteger(s.save+0x28,s.gil)
+ error('Money read-back failed; attempted to restore original amount')
+end
+showMessage('已將持有 Gil 設為 '..target..'。請重開選單核對，確認後另存新欄位。取消勾選不會還原。')
+
+{$asm}
+[DISABLE]
+</AssemblerScript>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>3</ID>
+      <Description>"03 唯讀背包清單：內部 ID 與數量"</Description>
+      <VariableType>Auto Assembler Script</VariableType>
+      <AssemblerScript>[ENABLE]
+{$lua}
+if syntaxcheck then return end
+-- FFRS retail Steam build 24250053. Read-only lookup, no injected game calls.
+-- SDK reference: PolarWizard/final-fantasy-resonance-fix (MIT).
+local function connect()
+ local pid=assert(getProcessIDFromProcessName('FFRS-Win64-Shipping.exe'),'Resonance is not running')
+ if getOpenedProcessID()~=pid then openProcess(pid) end
+ local base=assert(getAddressSafe('FFRS-Win64-Shipping.exe'),'Game module unavailable')
+ local pe=base+readInteger(base+0x3c)
+ assert(readInteger(pe+8)==0x6A586B2F and readInteger(pe+0x50)==503013376,'Unsupported game build; stop and revalidate')
+ local pool=base+0x9CA1280
+ local names={}
+ local blocks=readInteger(pool+8)
+ assert(blocks and blocks&gt;=0 and blocks&lt;8192,'Invalid name pool')
+ local function name(id)
+  if not id or id&lt;0 then return '?' end
+  if names[id] then return names[id] end
+  local block=math.floor(id/65536);local off=(id%65536)*2
+  if block&gt;blocks then return '?' end
+  local p=readPointer(pool+0x10+block*8);if not p or p&lt;65536 then return '?' end
+  local h=readSmallInteger(p+off);if not h then return '?' end
+  if h&lt;0 then h=h+65536 end
+  local len=math.floor(h/64)
+  if len&gt;1023 then return '?' end
+  local s
+  if h%2==1 then s=readString(p+off+2,len*2,true)
+  else local b=readBytes(p+off+2,len,true);s=b and string.char(table.unpack(b)) end
+  names[id]=s or '?';return names[id]
+ end
+ assert(name(0)=='None','Name pool does not match this game')
+ local function oname(o) return o and o&gt;65536 and name(readInteger(o+0x18)) or '?' end
+ local classes={}
+ local function cname(o)
+  local c=o and readPointer(o+0x10)
+  if not c or c&lt;65536 then return '?' end
+  if not classes[c] then classes[c]=oname(c) end
+  return classes[c]
+ end
+ local world=readPointer(base+0x9AA0540)
+ assert(world and world&gt;65536 and cname(world)=='World','Wait for a loaded world')
+ local gi=readPointer(world+0x228)
+ assert(gi and gi&gt;65536,'Wait for the game instance')
+ local g=base+0x9D84DD0;local count=readInteger(g+0x14);local chunks=readPointer(g)
+ assert(count and count&gt;0 and count&lt;2000000 and chunks and chunks&gt;65536,'Invalid object array')
+ local chunkCount=readInteger(g+0x1c)
+ assert(chunkCount and chunkCount&gt;0 and chunkCount&lt;=math.ceil(2000000/65536),'Invalid object chunks')
+ local function at(i)
+  if i&lt;0 or i&gt;=count then return nil end
+  local ch=readPointer(chunks+math.floor(i/65536)*8)
+  return ch and ch&gt;65536 and readPointer(ch+(i%65536)*24) or nil
+ end
+ local function ismanager(o)
+  if not o or o&lt;65536 then return false end
+  local flags=readInteger(o+8)
+  return flags and (flags &amp; 0x10)==0 and cname(o)=='CPP_MuchaSaveDataManager' and readPointer(o+0x20)==gi
+ end
+ local cached=_G.FFRS_CT_SESSION
+ local manager,index
+ if cached and cached.pid==pid and cached.base==base and at(cached.index)==cached.manager and ismanager(cached.manager) then
+  manager,index=cached.manager,cached.index
+ else
+  for i=0,count-1 do
+   local o=at(i)
+   if ismanager(o) then assert(not manager,'Multiple active save managers; stop');manager,index=o,i end
+  end
+ end
+ assert(manager,'Active save manager not found; load a save first')
+ local save=readPointer(manager+0x60)
+ assert(save and save&gt;65536 and cname(save)=='CPP_MuchaGameSaveData','Active save data unavailable')
+ local flags=readInteger(save+8);assert(flags and (flags &amp; 0x10)==0,'Default object is not a save')
+ local gil=readInteger(save+0x28)
+ assert(gil and gil&gt;=0 and gil&lt;=2147483647,'Invalid money value')
+ local inv=readPointer(save+0xA8);local n=readInteger(save+0xB0);local cap=readInteger(save+0xB4)
+ assert(n and cap and n&gt;=0 and n&lt;=cap and cap&lt;=100000,'Invalid inventory array')
+ assert(n==0 or (inv and inv&gt;65536),'Invalid inventory pointer')
+ _G.FFRS_CT_SESSION={pid=pid,base=base,manager=manager,index=index}
+ return {pid=pid,base=base,manager=manager,save=save,gil=gil,inventory=inv,count=n,capacity=cap}
+end
+
+local s=connect()
+assert(s.count&lt;=5000,'Inventory too large for this viewer')
+local lines={'唯讀背包資料（內部 ID，不代表道具名稱）',''}
+for i=0,s.count-1 do
+ local id=readInteger(s.inventory+i*8)
+ local amount=readInteger(s.inventory+i*8+4)
+ assert(id and amount and amount&gt;=0,'Inventory changed while reading; retry on the map')
+ lines[#lines+1]=string.format('ID %d：%d',id,amount)
+end
+showMessage(table.concat(lines,'\n'))
+
+{$asm}
+[DISABLE]
+</AssemblerScript>
+    </CheatEntry>
+  </CheatEntries>
+  <UserdefinedSymbols />
+</CheatTable>
