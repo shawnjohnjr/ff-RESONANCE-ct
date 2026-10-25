@@ -22,6 +22,7 @@ local function startBattleAutomation(mode)
   runtime.running=false;runtime.modes={}
   timer.Enabled=false;timer.destroy()
   pcall(thread.stop)
+  objects.clear()
   runtime.actions.pending=nil;runtime.actions.status='Stopped'
   runtime.results.status='Stopped'
  end
@@ -35,7 +36,7 @@ local function startBattleAutomation(mode)
   if not runtime.running then return end
   local ok,err=pcall(function()
    if getOpenedProcessID()~=s.pid or readSmallInteger(s.base)~=0x5A4D then runtime.stop();return end
-   objects.scan(256)
+   objects.scan(256,runtime.modes)
    for _,which in ipairs({'attack','results'}) do
     if runtime.modes[which] then
      local ready,missing=objects.ready(which)

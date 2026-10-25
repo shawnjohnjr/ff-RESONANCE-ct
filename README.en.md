@@ -84,7 +84,7 @@ No battle is needed for the change to take effect. **Current HP and MP are not a
 Entry 07 adapts the MIT-licensed [Resonance Game Boosters](https://github.com/Darjjj/resonance-game-boosters). It uses the game's existing action selection, command eligibility checks, and target selection functions to make the current friendly character use basic Attack. It does not restore the disabled native AutoBattle feature or use magic/items. Entry 07 alone does not automatically dismiss battle results. If basic Attack is unavailable, it waits.
 
 - Keep Windows Cheat Engine open and entry 07 checked. Enable it again after each game launch. It does not persist in saves or install an ASI/DLL mod.
-- Initial battle-automation discovery can take tens of seconds. Enabling the second feature while the other is running reuses the existing connection. Keep the game in the foreground at an ordinary battle's command selection screen.
+- Initial battle-automation discovery can still take several minutes. Enabling the second feature while the other is running reuses the existing connection. Keep the game in the foreground at an ordinary battle's command selection screen.
 - No commands are sent when Windows/Wine reports another foreground window, the game is paused, or a cinematic is playing. Focus reporting for every macOS window-switching scenario is not guaranteed; uncheck the entry to explicitly pause automation.
 - Unchecking stops new commands; an already confirmed attack may finish its animation. If stopped during target selection, cancel or complete that command manually before enabling again.
 - Polling stops when the game exits or CE attaches to another process. Closing CE stops new requests; an in-flight request is not guaranteed to be canceled.
@@ -92,6 +92,15 @@ Entry 07 adapts the MIT-licensed [Resonance Game Boosters](https://github.com/Da
 A game-window message callback invokes `ProcessEvent` on the game's own thread without overwriting existing game/engine code. Calls have a deadline and validate the current world, registry slots, serial numbers, and command state; changed state rejects the call. Disabling removes the hook. Small allocations remain until game exit to avoid freeing callback code while an invocation could still be returning.
 
 **Earlier crash and fix:** An unpublished prototype crashed when its callback read control data, before sending an attack. The dump identifies that failed access but does not establish why the data became unreadable. The revised dispatcher separates read/write control data from callback code and uses `VirtualQuery` to validate the control region and each guard address before reading. In an isolated test, deliberately making control data inaccessible was safely skipped; calls resumed after restoring access. Invalid addresses and mismatched state also rejected execution. This does not claim to establish an underlying CrossOver or Rosetta cause.
+
+- Discovery temporarily increases to at most 4,096 objects per slice when a valid battle command state has no matching view, using both a reverse scan from the registry tail and the forward sweep, then returns to 256 once found. Initial discovery uses at most 2,048. Every 32 objects it checks a 20 ms time budget; these are scan limits, not guaranteed completion times.
+- Every two seconds, stale view and function caches are pruned; class and inheritance cleanup visits at most 8 entries per cache per pass. Cached objects/classes are checked by address and lifetime identity so reused locations do not inherit stale entries. Disabling both automation modes clears the caches. Faster discovery mainly adds reads and CPU work; actual memory usage has not been measured.
+
+At `SELECT RESONANCE`, entry 07 cancels the selection and resumes ordinary attacks without choosing a finisher. Cancellation requires Finish command mode, the matching battle phase, a visible command view, and the existing foreground/scene guards. It addresses that view’s cancellation function, never a global key.
+
+**Known limitation: slow initial discovery remains unresolved.** Attack and result functions can become available at different times. In live testing, attacks resumed before `InputDecide` was discovered and automatic results started. This commit preserves that limitation; it does not claim to finish initialization performance work.
+
+Live validation: the user confirmed automatic attacks in the next battle, continuation after canceling resonance selection, and subsequently working automatic results. Isolated tests cover reused registry slots, bounded cleanup, scan budgets, resonance cancellation conditions, and result guards.
 
 ### Automatically confirm battle results
 

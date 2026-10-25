@@ -2,7 +2,8 @@
 local function battleActions(s,objects,thread,calls)
  local p=calls.buffer
  local invoke,safeScene=calls.invoke,calls.safeScene
- local actions={attacks=0,targets=0,pending=nil,status='Waiting for battle'}
+ local actions={attacks=0,targets=0,cancels=0,pending=nil,status='Waiting for battle'}
+ local cancelledResonance=nil
  local function unit(ctx,id,relation)
   if not invoke('GetBattleUnitByUniqueId',nil,ctx,function(a) writeInteger(a,id);writeBytes(a+4,1) end) then return end
   local actor=readPointer(p+8)
@@ -26,8 +27,21 @@ local function battleActions(s,objects,thread,calls)
  end
  function actions.step()
   local ctx=objects.context()
-  if not ctx then actions.pending=nil;actions.status='Waiting for battle';return end
+  if not ctx then actions.pending=nil;cancelledResonance=nil;actions.status='Waiting for battle';return end
   if not safeScene(ctx) then actions.status='Paused';return end
+  -- Finish (2) is SELECT RESONANCE. Cancel through this command view only;
+  -- do not select a finisher, spend a gauge, or send a global Cancel key.
+  if ctx.commandType==2 then
+   actions.pending=nil
+   if ctx.phase==2 and ctx.state==0 and cancelledResonance~=ctx.key then
+    if invoke('CancelCommand',ctx.view,ctx) then
+     cancelledResonance=ctx.key;actions.cancels=actions.cancels+1
+     actions.status='Resonance selection cancelled'
+    end
+   end
+   return
+  end
+  cancelledResonance=nil
   local pending=actions.pending
   if pending and (pending.key~=ctx.key or pending.stage==2 and ctx.state==0) then pending=nil;actions.pending=nil end
   local actor=unit(ctx,ctx.unit,1);if not actor then actions.pending=nil;return end

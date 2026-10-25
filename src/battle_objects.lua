@@ -5,6 +5,7 @@ local function battleObjects(s)
   GetBattleUnitByUniqueId={'CPP_BFL_Battle',true},
   GetUnitParameter={'CPP_BtlUnit',false},GetRelation={'CPP_UnitParameter',false},
   GetUnitAI={'CPP_BtlUnit',false},GetFightSkillId={'CPP_BtlUnitAI',false},
+  CancelCommand={'CPP_VM_BtlCmd',false,true,0},
   CanActivateAction={'CPP_VM_BtlCmd',false},DecideActionKey={'CPP_VM_BtlCmd',false},
   GetDefaultSkillTargetUnitUniqueId={'CPP_BFL_Battle',true},
   DecideTarget={'CPP_VM_BtlCmd',false},IsEnableCommand={'CPP_BFL_Battle',true},
@@ -17,6 +18,45 @@ local function battleObjects(s)
  local inheritance={}
  local scanChunks={}
  local kinds={}
+ local lastPrune=0
+ local kindPruneCursor,inheritancePruneCursor
+ local priorityCursor=nil
+ b.discovery={mode='background',inspected=0,elapsedMs=0,boosts=0,pruned=0}
+ -- Store identities as well as addresses: Unreal can reuse object/class slots.
+ function b.prune(limit)
+  limit=limit or math.huge
+  local removed=0
+  for _,cache in ipairs({b.interfaces,b.views,b.results,b.roots}) do
+   for o,identity in pairs(cache) do
+    if b.live(o)~=identity then cache[o]=nil;removed=removed+1 end
+   end
+  end
+  local function pruneClasses(cache,cursor)
+   local key=cursor or next(cache)
+   local visited=0
+   while key and visited<limit do
+    local entry=cache[key];local following=next(cache,key)
+    if b.live(key,true)~=entry.identity then cache[key]=nil;removed=removed+1 end
+    key=following;visited=visited+1
+   end
+   return key
+  end
+  kindPruneCursor=pruneClasses(kinds,kindPruneCursor)
+  inheritancePruneCursor=pruneClasses(inheritance,inheritancePruneCursor)
+  if b.activeView and b.live(b.activeView)~=b.activeViewIdentity then
+   b.activeView=nil;b.activeViewIdentity=nil
+  end
+  for name,fn in pairs(b.functions) do
+   if b.live(fn.object)~=fn.identity then b.functions[name]=nil;removed=removed+1 end
+  end
+  b.discovery.pruned=b.discovery.pruned+removed
+ end
+ function b.clear()
+  b.functions={};b.interfaces={};b.views={};b.results={};b.roots={}
+  b.activeView=nil;b.activeViewIdentity=nil
+  inheritance={};scanChunks={};kinds={}
+  kindPruneCursor=nil;inheritancePruneCursor=nil;priorityCursor=nil
+ end
  local function slot(index)
   local count=readInteger(registry+0x14)
   if not index or index<0 or not count or index>=count or count>2000000 then return end
@@ -40,14 +80,18 @@ local function battleObjects(s)
  function b.isa(o,class)
   local c=readPointer(o+16)
   if not c then return false end
-  local key=tostring(c)..':'..tostring(class)
-  if inheritance[key]~=nil then return inheritance[key] end
+  local identity=b.live(c,true);if not identity then return false end
+  local cached=inheritance[c]
+  if not cached or cached.identity~=identity then
+   cached={identity=identity,answers={}};inheritance[c]=cached
+  end
+  if cached.answers[class]~=nil then return cached.answers[class] end
   for _=1,32 do
    if not c or c<65536 then return false end
-   if type(class)=='number' and c==class or type(class)=='string' and s.oname(c)==class then inheritance[key]=true;return true end
+   if type(class)=='number' and c==class or type(class)=='string' and s.oname(c)==class then cached.answers[class]=true;return true end
    c=readPointer(c+0x40)
   end
-  inheritance[key]=false;return false
+  cached.answers[class]=false;return false
  end
  local function inspect(i)
   local chunkIndex=math.floor(i/65536)
@@ -59,13 +103,15 @@ local function battleObjects(s)
   local a=chunk and chunk+(i%65536)*24;local o=a and readPointer(a)
   if not o or o<65536 then return end
   local klass=readPointer(o+16);if not klass or klass<65536 then return end
-  local cn=kinds[klass]
+  local cached=kinds[klass]
+  local cn=cached and cached.value
   if not cn then
+   local identity=b.live(klass,true);if not identity then return end
    cn=s.oname(klass)
    if cn~='Function' then
     cn=b.isa(o,'CPP_UI_BattleSubsystem') and 'UI' or b.isa(o,'CPP_VM_BtlCmd') and 'View' or b.isa(o,'WBP_Btl_ResultLayout_C') and 'Result' or b.isa(o,'WBP_OverAllLayout_C') and 'Root' or 'Other'
    end
-   kinds[klass]=cn
+   kinds[klass]={identity=identity,value=cn}
   end
   if cn=='Function' then
    local n=s.oname(o);local wanted=spec[n]
@@ -73,20 +119,49 @@ local function battleObjects(s)
     local owner=readPointer(o+32);local flags=readInteger(o+0xB0)
     local native=wanted[3]~=false
     if s.oname(owner)==wanted[1] and flags and ((flags & 0x400)~=0)==native and (native or (flags & 0x800)~=0) and ((flags & 0x2000)~=0)==wanted[2] then
-     b.functions[n]={object=o,owner=owner,static=wanted[2],native=native,paramSize=wanted[4],defaults=readPointer(owner+0x110)}
+     b.functions[n]={object=o,owner=owner,static=wanted[2],native=native,paramSize=wanted[4],identity=b.live(o),defaults=readPointer(owner+0x110)}
     end
    end
-  elseif cn=='UI' and b.live(o,false) then b.interfaces[o]=true
-  elseif cn=='View' and b.live(o,false) then b.views[o]=true
-  elseif cn=='Result' and b.live(o,false) then b.results[o]=true
-  elseif cn=='Root' and b.live(o,false) then b.roots[o]=true end
+  elseif cn=='UI' and b.live(o,false) then b.interfaces[o]=b.live(o)
+  elseif cn=='View' and b.live(o,false) then b.views[o]=b.live(o)
+  elseif cn=='Result' and b.live(o,false) then b.results[o]=b.live(o)
+  elseif cn=='Root' and b.live(o,false) then b.roots[o]=b.live(o) end
  end
- function b.scan(budget)
-  local n=assert(readInteger(registry+0x14));assert(n<2000000,'Invalid object count')
-  -- Prioritize newly appended objects so the first battle does not wait a full scan.
-  local left=budget
-  while b.seen<n and left>0 do inspect(b.seen);b.seen=b.seen+1;left=left-1 end
-  while left>0 do if b.cursor>=n then b.cursor=0 end;inspect(b.cursor);b.cursor=b.cursor+1;left=left-1 end
+ function b.scan(budget,modes)
+  local n=assert(readInteger(registry+0x14));assert(n>=0 and n<2000000,'Invalid object count')
+  local start=getTickCount()
+  if start-lastPrune>=2000 then b.prune(8);lastPrune=start end
+  scanChunks={} -- Chunk pointers are reused only within this slice.
+  b.seen=math.min(b.seen,n)
+  local mode='background'
+  if modes and modes.attack then
+   local _,reason=b.context()
+   if reason=='missing-command-view' then budget=math.max(budget,4096);mode='command-view' end
+  end
+  if mode=='background' and b.seen<n then budget=math.max(budget,2048);mode='initial' end
+  if mode~='background' then
+   if b.discovery.mode~=mode or not priorityCursor or priorityCursor>=n then priorityCursor=n-1 end
+  else priorityCursor=nil end
+  if mode~='background' then b.discovery.boosts=b.discovery.boosts+1 end
+  local processed=0
+  -- Visit reused slots too: registry size need not grow between battles.
+  while processed<budget and n>0 do
+   if mode~='background' and processed%2==0 then
+    -- UI objects often reuse high registry slots; search backwards as well.
+    -- Alternate with the full sweep so low reused slots cannot starve.
+    if priorityCursor<0 then priorityCursor=n-1 end
+    inspect(priorityCursor);priorityCursor=priorityCursor-1
+   elseif b.seen<n then inspect(b.seen);b.seen=b.seen+1
+   else
+    if b.cursor>=n then b.cursor=0 end
+    inspect(b.cursor);b.cursor=b.cursor+1
+   end
+   processed=processed+1
+   -- Bound each burst so CE keeps servicing its UI and the stop switch.
+   if processed%32==0 and getTickCount()-start>=20 then break end
+  end
+  b.discovery.mode=mode;b.discovery.inspected=processed
+  b.discovery.elapsedMs=getTickCount()-start
  end
  function b.ready(mode)
   local resultNames={InputDecide=true,IsInViewport=true,IsGamePaused=true,IsPlayingEvent=true,IsPlaying=true}
@@ -102,8 +177,8 @@ local function battleObjects(s)
   if not b.live(world,false,g) then return end
   add(g,s.base+0x9AA0540,world)
   local ui
-  for o in pairs(b.interfaces) do
-   if not b.live(o) then b.interfaces[o]=nil
+  for o,identity in pairs(b.interfaces) do
+   if b.live(o)~=identity or not b.isa(o,'CPP_UI_BattleSubsystem') then b.interfaces[o]=nil
    elseif readPointer(o+32)==world and readBytes(o+0x80,1)==1 then
     if ui then return end;ui=o
    end
@@ -132,20 +207,20 @@ local function battleObjects(s)
   else index=0;unit=readInteger(manager+0x70);add(g,manager+0x70,unit,4) end
   if not unit or unit<0 then return end
   local view,vid,visible
-  for o in pairs(b.views) do
-   if not b.live(o) then b.views[o]=nil
+  for o,identity in pairs(b.views) do
+   if b.live(o)~=identity or not b.isa(o,'CPP_VM_BtlCmd') then b.views[o]=nil
    elseif readPointer(o+0x68)==asset then
     local v=readBytes(o+0x199,1)
-    if v and v<=1 and (state==0 and v==1 or state==1 and o==b.activeView) then
+    if v and v<=1 and (state==0 and v==1 or state==1 and o==b.activeView and b.live(o)==b.activeViewIdentity) then
      if view then return end;view=o;visible=v
     end
    end
   end
-  if not view then return end
+  if not view then return nil,'missing-command-view' end
   vid=b.live(view,false,g)
   add(g,view+0x68,asset);add(g,view+0x199,visible,1)
-  if state==0 then b.activeView=view end
-  return {world=world,unit=unit,state=state,view=view,guards=g,
+  if state==0 then b.activeView=view;b.activeViewIdentity=vid end
+  return {world=world,unit=unit,state=state,commandType=typ,phase=phase,view=view,guards=g,
    key=world..'/'..mid..'/'..vid..'/'..unit..'/'..(index+typ*0x1000000)}
  end
  return b
