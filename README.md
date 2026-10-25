@@ -111,6 +111,26 @@ SteamAppId=3259780 SteamGameId=3259780 \
 
 若標準版與 MGVF 共用同一個 bottle，安裝／修復 runtime 仍會改動共用的 Windows 環境。本次 bottle 已有合適的原生 runtime，成功的關鍵是這個單次啟動的 DLL 選擇設定。以上是此 build 的實測處理方式；更新遊戲或 CrossOver 後應重新確認版本與錯誤原因。
 
+### 後續修正：直接點 CrossOver 原本的遊戲圖示
+
+上面的終端機命令只解決單次啟動。後續已把相同參數保存在 CrossOver 的 **FINAL FANTASY RESONANCE 共用捷徑**，不再需要每次輸入命令或另開 macOS 啟動器，也不需要 Cheat Engine。
+
+本次原圖示指向 Windows `.url` 檔案，內容是 `steam://rungameid/3259780`，並非直接執行 `FFRS.exe`。當 Steam 已在執行時，不能依賴替網址捷徑新增的環境變數傳給既有 Steam 程序。GUI「運行命令」雖有環境變數欄位，本次最終採用 CrossOver 隨附的 `cxmenu` 工具，替換原圖示的實際啟動命令。
+
+實際處理流程：
+
+1. 備份 bottle 的 `cxmenu.conf`、`cxbottle.conf`，以及 Resonance 在 Windows 桌面與開始選單中的兩個 `.url` 原檔。
+2. 將這兩個原檔移到掃描範圍以外的備份目錄。這可避免 CrossOver 重新掃描 Windows 捷徑時，把自訂命令覆蓋回 Steam 網址捷徑；原檔保留供還原。
+3. 使用標準版安裝目錄下的 `bin/cxmenu --bottle … --create … --type raw --command … --icon … --description … --install`，更新 `cxmenu.conf` 中**原有的兩個 Resonance 項目**，保留圖示名稱與圖示。`--create` 在本次指定的是既有項目識別路徑，並非另建不同名稱的遊戲圖示。
+4. 命令固定指向標準版 CrossOver 的 `bin/wine`，直接執行 `FFRS.exe`，並帶入上方相同的 `SteamAppId`、`SteamGameId`、`--no-update` 與 `--dll …=n,b` 參數。不要用會隨目前 CrossOver 版本改變的程式路徑。
+5. 比對前後設定：只有 Resonance 的兩個選單項目改變，`cxbottle.conf` 位元組相同，其他遊戲（包含忍者龍劍傳 4）的捷徑未變。關閉遊戲後，從 CrossOver 原本的圖示啟動；使用者確認正常進入標題畫面，沒有 VC++ 錯誤。
+
+**共用範圍：** 本機標準版與 MGVF 共用 Steam bottle 及選單設定，因此兩邊看到的是同一份 Resonance 捷徑。經使用者確認後，只修改這個遊戲的捷徑，固定由標準版啟動；沒有修改 MGVF 程式、圖形選項、全 bottle DLL 覆寫或其他遊戲設定。不要把這種共用捷徑修正描述成只在一個 GUI 中生效。
+
+**日後使用：** 先讓該 bottle 的標準版 Steam 開啟並登入，再點 CrossOver 裡的 **FINAL FANTASY RESONANCE**。此修正不會替 Steam 收藏庫的「開始遊戲」按鈕加入參數。移動 CrossOver／遊戲、重建捷徑或更新後若設定改變，需重新確認儲存的命令。
+
+**還原：** 將備份的兩個 `.url` 放回各自原位置，還原 `cxmenu.conf` 中對應的兩個項目，再用 CrossOver 的選單工具重新匯出／整理。若其間還有其他捷徑變動，不要直接覆蓋整份舊 `cxmenu.conf`。本機路徑與備份沒有放進此公開 repo。
+
 ## 驗證狀態（2026-10-26）
 
 - 六個 Lua 項目通過 CE 語法檢查。

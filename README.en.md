@@ -111,6 +111,26 @@ This DLL selection applies only to this launch and child processes that inherit 
 
 If standard CrossOver and MGVF share a bottle, installing or repairing runtime components still changes that shared Windows environment. In this case the appropriate native runtime was already present; the per-launch DLL selection was the key fix. These steps document the tested build. After game or CrossOver updates, recheck versions and the actual cause of any launch error.
 
+### Follow-up fix: use the original CrossOver game icon
+
+The Terminal command above fixes one launch at a time. The same arguments were subsequently saved in CrossOver's **shared FINAL FANTASY RESONANCE shortcut**, so launching from that icon no longer requires typing a command, opening a separate macOS launcher, or running Cheat Engine.
+
+The original icon pointed to a Windows `.url` containing `steam://rungameid/3259780`, rather than directly executing `FFRS.exe`. When Steam is already running, environment variables supplied to a URL shortcut cannot be relied on to reach that existing Steam process. Although the GUI's Run Command dialog has an environment-variable field, the final fix used CrossOver's bundled `cxmenu` tool to replace the original icon's actual launch command.
+
+What was changed:
+
+1. Back up the bottle's `cxmenu.conf` and `cxbottle.conf`, plus both original Resonance `.url` files in the Windows Desktop and Start Menu folders.
+2. Move those two original files to a backup directory outside the shortcut scanner's search locations. This prevents a Windows shortcut rescan from replacing the custom commands with Steam URL launches. Keep the originals for rollback.
+3. Use `bin/cxmenu --bottle … --create … --type raw --command … --icon … --description … --install` from the standard CrossOver installation to update the **two existing Resonance entries** in `cxmenu.conf`, preserving their display name and icon. Here, `--create` targeted existing entry identifiers; it did not create a differently named game icon.
+4. Pin the command to standard CrossOver's `bin/wine`, launch `FFRS.exe` directly, and include the same `SteamAppId`, `SteamGameId`, `--no-update`, and `--dll …=n,b` arguments shown above. Avoid a program path that changes with the currently selected CrossOver version.
+5. Compare settings before and after: only the two Resonance menu entries changed, `cxbottle.conf` remained byte-for-byte identical, and other game shortcuts—including Ninja Gaiden 4—were unchanged. With the game closed, launch from its original CrossOver icon. The user confirmed reaching the title screen without the VC++ error.
+
+**Shared scope:** Standard CrossOver and MGVF share the Steam bottle and menu configuration on this machine. Both therefore see the same Resonance shortcut. With the user's approval, only that game's shortcut was changed to launch through standard CrossOver. The MGVF application, graphics options, bottle-wide DLL overrides, and other game settings were not changed. This shared-shortcut fix should not be described as affecting only one GUI.
+
+**Everyday use:** Open and sign in to the bottle's Steam using standard CrossOver, then click **FINAL FANTASY RESONANCE** in CrossOver. This does not add launch arguments to the Play button in Steam's library. Recheck the stored command after moving CrossOver or the game, recreating shortcuts, or an update that changes the configuration.
+
+**Rollback:** Restore both original `.url` files to their original locations, restore the corresponding two entries in `cxmenu.conf`, then re-export/refresh the menus with CrossOver's menu tool. If other shortcuts have changed meanwhile, do not overwrite the entire configuration with an old copy. Machine-specific paths and backups are not included in this public repository.
+
 ## Validation status — October 26, 2026
 
 - All six Lua entries passed CE syntax checks.
