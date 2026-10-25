@@ -79,7 +79,11 @@ CT 自動連接 `FFRS-Win64-Shipping.exe`，檢查執行檔版本，從目前世
 
 - `src/game_connection.lua`：版本檢查、目前存檔與資料表定位。
 - `src/item_names.lua`：官方英文／繁體中文道具名稱與分類；只含名稱，不含敘述或劇情。
-- `src/gameplay_helpers.lua`：道具名稱／選擇資料、寫入檢查、升級表與遊戲函式呼叫。
+- `src/unreal_tables.lua`：Unreal 資料表的尋找、稀疏資料列讀取與驗證。
+- `src/inventory_items.lua`：已持有道具清單、數量寫入與背包變更檢查。
+- `src/party_progression.lua`：角色陣列驗證、隊伍成員與 Lv.99 經驗值規劃。
+- `src/memory_checks.lua`：原生遊戲函式的機器碼特徵檢查。
+- `src/party_upgrade.lua`：升級函式驗證、角色升級與結果讀回。
 - `src/inspect_save.lua`：唯讀存檔檢查。
 - `src/set_gil.lua`：設定金錢。
 - `src/list_inventory.lua`：列出背包 ID 與數量。
@@ -89,6 +93,10 @@ CT 自動連接 `FFRS-Win64-Shipping.exe`，檢查執行檔版本，從目前世
 - `build.py`：產生可獨立使用的 CT。
 
 `build.py` 的 `TABLE_ENTRIES` 明確列出各項目的固定 ID、顯示名稱、來源檔案與輔助程式依賴；不以檔名編號或清單順序推測依賴。顯示順序可調整，既有 ID 應保留。
+
+`GAMEPLAY_HELPER_SOURCES` 列出共用檔案的組合順序。道具操作依賴資料表與名稱對照；升級操作依賴角色規劃與記憶體檢查。這些 Lua 檔案在產生時串接到同一作用域，保留 `local` 函式，不需要額外的 Lua 套件載入器。現有進階項目仍帶入完整輔助程式組，保持已驗證的 CT 內容完全一致。
+
+新增共用函式時，依職責放入上述檔案；新增輔助檔則加入 `GAMEPLAY_HELPER_SOURCES`，放在呼叫它的檔案之前。輔助檔應以換行結尾。來源不存在時，產生器會在寫出 CT 前停止。
 
 新增功能時：在 `src/` 建立依功能命名的 Lua 檔，於 `TABLE_ENTRIES` 加入唯一 ID 與來源路徑，再執行產生器。共享的定位與資料操作邏輯放在對應輔助檔，功能檔負責操作流程與介面。產生器會拒絕重複 ID、重複來源及遺漏的來源檔案。
 

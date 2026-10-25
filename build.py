@@ -9,6 +9,18 @@ SOURCE_DIR = ROOT / "src"
 OUTPUT_FILE = ROOT / "FFRS_Steam_24250053_Starter.CT"
 
 
+# Lua helpers share one lexical scope in the generated CT.
+# Keep dependencies before their callers; concatenate without adding separators
+# so splitting source files does not alter the already-tested scripts.
+GAMEPLAY_HELPER_SOURCES = (
+    "unreal_tables.lua",      # tableRows, findTable
+    "inventory_items.lua",    # inventoryChoices, setItem
+    "party_progression.lua",  # arrayAt, partyPlan
+    "memory_checks.lua",      # checkCode
+    "party_upgrade.lua",      # checkLevelFunctions, setParty99
+)
+
+
 @dataclass(frozen=True)
 class TableEntry:
     entry_id: int
@@ -71,7 +83,8 @@ def build_table():
     validate_entries(TABLE_ENTRIES)
     connection = read_source("game_connection.lua")
     gameplay_helpers = (
-        read_source("item_names.lua") + "\n" + read_source("gameplay_helpers.lua")
+        read_source("item_names.lua") + "\n"
+        + "".join(read_source(source) for source in GAMEPLAY_HELPER_SOURCES)
     )
 
     root = ET.Element("CheatTable", CheatEngineTableVersion="45")
