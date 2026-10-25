@@ -15,12 +15,13 @@ For Steam **build 24250053**. Tested on macOS with standard CrossOver and Window
 | 05 | Raise current party members to Lv.99 and recalculate their parameters through game functions |
 | 06 | Endgame equipment pack: top up 8 weapons, 3 armor types, and 4 accessories |
 | 07 | Automatic basic Attack: runs while checked; uncheck to stop |
+| 08 | Automatically confirm battle results: standalone or together with entry 07 |
 
-Entries are independent and disabled by default. Entries 01–06 run once, without freezing values; unchecking does not undo changes. Uncheck and recheck to run them again. Entry 07 runs continuously while checked; unchecking stops new commands.
+Entries are independent and disabled by default. Entries 01–06 run once, without freezing values; unchecking does not undo changes. Uncheck and recheck to run them again. Entries 07 and 08 run while checked and can be disabled separately. Their shared callback is removed when both are disabled.
 
 ## Usage
 
-1. Back up your save. For entries 01–06, enter a map and remain in a menu; do not battle, use items, shop, or change maps during the operation. For entry 07, follow the auto-attack instructions below.
+1. Back up your save. For entries 01–06, enter a map and remain in a menu; do not battle, use items, shop, or change maps during the operation. For entries 07 and 08, follow the battle automation instructions below.
 2. Run Windows CE in the same CrossOver bottle as the game and load the [CT](FFRS_Steam_24250053_Starter.CT).
 3. Enable entry 01 and compare its values with the game menu. The first object scan takes time; avoid repeated clicks.
 4. Select a feature. The item editor presents a list first, then asks for a quantity. Canceling makes no change.
@@ -68,10 +69,10 @@ No battle is needed for the change to take effect. **Current HP and MP are not a
 
 ### Automatic basic Attack
 
-Entry 07 adapts the MIT-licensed [Resonance Game Boosters](https://github.com/Darjjj/resonance-game-boosters). It uses the game's existing action selection, command eligibility checks, and target selection functions to make the current friendly character use basic Attack. It does not restore the disabled native AutoBattle feature, use magic/items, or automatically dismiss battle results. If basic Attack is unavailable, it waits.
+Entry 07 adapts the MIT-licensed [Resonance Game Boosters](https://github.com/Darjjj/resonance-game-boosters). It uses the game's existing action selection, command eligibility checks, and target selection functions to make the current friendly character use basic Attack. It does not restore the disabled native AutoBattle feature or use magic/items. Entry 07 alone does not automatically dismiss battle results. If basic Attack is unavailable, it waits.
 
 - Keep Windows Cheat Engine open and entry 07 checked. Enable it again after each game launch. It does not persist in saves or install an ASI/DLL mod.
-- Object discovery on each enable can take tens of seconds. Keep the game in the foreground at an ordinary battle's command selection screen.
+- Initial battle-automation discovery can take tens of seconds. Enabling the second feature while the other is running reuses the existing connection. Keep the game in the foreground at an ordinary battle's command selection screen.
 - No commands are sent when Windows/Wine reports another foreground window, the game is paused, or a cinematic is playing. Focus reporting for every macOS window-switching scenario is not guaranteed; uncheck the entry to explicitly pause automation.
 - Unchecking stops new commands; an already confirmed attack may finish its animation. If stopped during target selection, cancel or complete that command manually before enabling again.
 - Polling stops when the game exits or CE attaches to another process. Closing CE stops new requests; an in-flight request is not guaranteed to be canceled.
@@ -79,6 +80,16 @@ Entry 07 adapts the MIT-licensed [Resonance Game Boosters](https://github.com/Da
 A game-window message callback invokes `ProcessEvent` on the game's own thread without overwriting existing game/engine code. Calls have a deadline and validate the current world, registry slots, serial numbers, and command state; changed state rejects the call. Disabling removes the hook. Small allocations remain until game exit to avoid freeing callback code while an invocation could still be returning.
 
 **Earlier crash and fix:** An unpublished prototype crashed when its callback read control data, before sending an attack. The dump identifies that failed access but does not establish why the data became unreadable. The revised dispatcher separates read/write control data from callback code and uses `VirtualQuery` to validate the control region and each guard address before reading. In an isolated test, deliberately making control data inaccessible was safely skipped; calls resumed after restoring access. Invalid addresses and mismatched state also rejected execution. This does not claim to establish an underlying CrossOver or Rosetta cause.
+
+### Automatically confirm battle results
+
+Entry 08 is an independent switch: battle manually and let the CT handle results, or enable both 07 and 08 to automate basic attacks through result completion. Disabling 08 preserves auto-attack; disabling 07 preserves automatic results.
+
+Adapted from [Resonance Game Boosters](https://github.com/Darjjj/resonance-game-boosters), this feature calls only the current result widget's `InputDecide`, sending confirm/release events at least 250 ms apart. It does not send global Enter/key input. The game handles animations, count-ups, page transitions, and normal reward processing; reward values are not directly modified.
+
+Before sending, it validates the result widget, current page, result model, and viewport root. Active system/modal widgets, pausing, or cinematic playback block confirmation. Confirmation stops when results finish or gameplay resumes. If confirmation retires the widget, release is not redirected to another screen. CE must remain open, and Windows/Wine must report the game as foreground.
+
+Both entries share one game-thread callback. Disabling both stops polling and removes that callback. A confirmation already dispatched may complete; unchecking cannot undo normal battle rewards already collected. Ordinary battle results were tested; special story battles, defeat/retry flows, and every reward-page variant have not been exhaustively tested.
 
 ## CrossOver: missing VC++ x64 message at launch
 
@@ -148,7 +159,10 @@ What was changed:
 
 ## Validation status — October 26, 2026
 
-- Lua enable/disable blocks for all seven entries compiled in CE 7.7; the original six scripts and descriptions remain byte-for-byte unchanged.
+- Auto results: the prototype and actual entry 08 returned to the map. With 08 disabled, results stayed open with zero confirmations. Entry 08 alone completed results; 07 and 08 together completed an ordinary battle automatically. The user confirmed normal character/item menus were not accidentally operated.
+- Switching features preserved the same shared callback; disabling one retained the other, and disabling both cleared the dispatcher enable flag. Result-flow tests cover no result page, pause, rejected calls, paired confirm/release, rate limiting, return to gameplay, and no release to a retired widget.
+
+- Lua enable/disable blocks for all eight entries compiled in CE 7.7; the original six scripts and descriptions remain byte-for-byte unchanged.
 - Auto Attack: the user confirmed the single-action prototype. The actual entry 07 then selected and confirmed 3 attacks across two battles; the user confirmed normal visuals and resumed attacks after returning to the foreground. The first result screen waited for manual confirmation. Unchecking cleared the dispatcher enable flag and stopped the counters; after re-enabling and exiting the game normally, polling stopped without a callback error.
 - Isolated dispatcher tests: 100 revised calls passed; 20 window messages safely skipped intentionally inaccessible control data, and calls resumed after access was restored. Mismatched state and unreadable guard addresses rejected calls. The underlying reason the original control data became inaccessible has not been established.
 - Bilingual picker: all 505 live data-table rows passed name/ID/category matching. Labels and quantity prompts for the nine initially owned supported items were checked; cancellation left the inventory unchanged.
@@ -164,8 +178,13 @@ What was changed:
 
 - `src/game_thread_dispatch.lua`: game-window thread calls with memory checks and deadlines.
 - `src/battle_objects.lua`: battle object/function discovery and command context validation.
+- `src/battle_calls.lua`: shared native/Blueprint function validation and guarded calls.
 - `src/battle_actions.lua`: basic Attack and target selection flow.
-- `src/enable_auto_attack.lua` / `src/disable_auto_attack.lua`: polling lifecycle and process-loss handling.
+- `src/result_actions.lua`: result/page/modal validation and confirmation flow.
+- `src/battle_runtime.lua`: shared dispatcher and polling lifecycle for independent switches.
+- `src/enable_auto_attack.lua` / `src/disable_auto_attack.lua`: auto-attack switch.
+- `src/enable_auto_results.lua` / `src/disable_auto_results.lua`: auto-results switch.
+- `tests/result_actions_test.lua`: result-event safety tests without the game; run with Lua 5.3+ from the repository root.
 
 - `src/game_connection.lua`: executable checks, active-save lookup, and data-table discovery.
 - `src/item_names.lua`: English/Traditional Chinese item labels and categories; names only, without descriptions or dialogue.

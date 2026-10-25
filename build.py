@@ -22,6 +22,12 @@ GAMEPLAY_HELPER_SOURCES = (
 )
 
 
+BATTLE_HELPER_SOURCES = (
+    "game_thread_dispatch.lua", "battle_objects.lua", "battle_calls.lua",
+    "battle_actions.lua", "result_actions.lua", "battle_runtime.lua",
+)
+
+
 @dataclass(frozen=True)
 class TableEntry:
     entry_id: int
@@ -52,8 +58,13 @@ TABLE_ENTRIES = (
     TableEntry(
         7, "07 自動普通攻擊（勾選啟用／取消停止）",
         "enable_auto_attack.lua",
-        helper_sources=("game_thread_dispatch.lua", "battle_objects.lua", "battle_actions.lua"),
+        helper_sources=BATTLE_HELPER_SOURCES,
         disable_source="disable_auto_attack.lua",
+    ),
+    TableEntry(
+        8, "08 自動確認戰後結算（獨立開關）",
+        "enable_auto_results.lua", helper_sources=BATTLE_HELPER_SOURCES,
+        disable_source="disable_auto_results.lua",
     ),
 )
 

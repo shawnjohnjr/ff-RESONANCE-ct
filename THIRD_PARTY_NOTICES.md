@@ -26,7 +26,7 @@ SOFTWARE.
 
 ## Resonance Game Boosters
 
-Auto-attack state handling, reflection calls, and window-thread dispatch were adapted from [Darjjj/resonance-game-boosters](https://github.com/Darjjj/resonance-game-boosters). The ASI mod is not bundled or required.
+Auto-attack and result-confirmation state handling, reflection calls, and window-thread dispatch were adapted from [Darjjj/resonance-game-boosters](https://github.com/Darjjj/resonance-game-boosters). The ASI mod is not bundled or required.
 
 MIT License
 

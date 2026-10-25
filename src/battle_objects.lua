@@ -1,6 +1,6 @@
 -- Reflection and state validation adapted from Darjjj/resonance-game-boosters (MIT).
 local function battleObjects(s)
- local b={functions={},interfaces={},views={},cursor=0,seen=0}
+ local b={functions={},interfaces={},views={},results={},roots={},cursor=0,seen=0}
  local spec={
   GetBattleUnitByUniqueId={'CPP_BFL_Battle',true},
   GetUnitParameter={'CPP_BtlUnit',false},GetRelation={'CPP_UnitParameter',false},
@@ -10,6 +10,8 @@ local function battleObjects(s)
   DecideTarget={'CPP_VM_BtlCmd',false},IsEnableCommand={'CPP_BFL_Battle',true},
   IsGamePaused={'GameplayStatics',true},IsPlayingEvent={'CPP_BFL_TalkEvent',true},
   IsPlaying={'CPP_BFL_Movie',true},
+  InputDecide={'WBP_Btl_ResultLayout_C',false,false,1},
+  IsInViewport={'Widget',false},
  }
  local registry=s.base+0x9D84DD0
  local inheritance={}
@@ -61,7 +63,7 @@ local function battleObjects(s)
   if not cn then
    cn=s.oname(klass)
    if cn~='Function' then
-    cn=b.isa(o,'CPP_UI_BattleSubsystem') and 'UI' or b.isa(o,'CPP_VM_BtlCmd') and 'View' or 'Other'
+    cn=b.isa(o,'CPP_UI_BattleSubsystem') and 'UI' or b.isa(o,'CPP_VM_BtlCmd') and 'View' or b.isa(o,'WBP_Btl_ResultLayout_C') and 'Result' or b.isa(o,'WBP_OverAllLayout_C') and 'Root' or 'Other'
    end
    kinds[klass]=cn
   end
@@ -69,12 +71,15 @@ local function battleObjects(s)
    local n=s.oname(o);local wanted=spec[n]
    if wanted and b.live(o,false) then
     local owner=readPointer(o+32);local flags=readInteger(o+0xB0)
-    if s.oname(owner)==wanted[1] and flags and (flags & 0x400)~=0 and ((flags & 0x2000)~=0)==wanted[2] then
-     b.functions[n]={object=o,owner=owner,static=wanted[2],defaults=readPointer(owner+0x110)}
+    local native=wanted[3]~=false
+    if s.oname(owner)==wanted[1] and flags and ((flags & 0x400)~=0)==native and (native or (flags & 0x800)~=0) and ((flags & 0x2000)~=0)==wanted[2] then
+     b.functions[n]={object=o,owner=owner,static=wanted[2],native=native,paramSize=wanted[4],defaults=readPointer(owner+0x110)}
     end
    end
   elseif cn=='UI' and b.live(o,false) then b.interfaces[o]=true
-  elseif cn=='View' and b.live(o,false) then b.views[o]=true end
+  elseif cn=='View' and b.live(o,false) then b.views[o]=true
+  elseif cn=='Result' and b.live(o,false) then b.results[o]=true
+  elseif cn=='Root' and b.live(o,false) then b.roots[o]=true end
  end
  function b.scan(budget)
   local n=assert(readInteger(registry+0x14));assert(n<2000000,'Invalid object count')
@@ -83,8 +88,12 @@ local function battleObjects(s)
   while b.seen<n and left>0 do inspect(b.seen);b.seen=b.seen+1;left=left-1 end
   while left>0 do if b.cursor>=n then b.cursor=0 end;inspect(b.cursor);b.cursor=b.cursor+1;left=left-1 end
  end
- function b.ready()
-  for n in pairs(spec) do if not b.functions[n] then return false,n end end
+ function b.ready(mode)
+  local resultNames={InputDecide=true,IsInViewport=true,IsGamePaused=true,IsPlayingEvent=true,IsPlaying=true}
+  for n in pairs(spec) do
+   local needed=mode=='results' and resultNames[n] or mode~='results' and n~='InputDecide' and n~='IsInViewport'
+   if needed and not b.functions[n] then return false,n end
+  end
   return true
  end
  local function add(g,a,v,size) g[#g+1]={a,v,size} end

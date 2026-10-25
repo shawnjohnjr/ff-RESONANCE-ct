@@ -1,1 +1,1 @@
-if _G.FFRS_AUTO_ATTACK then _G.FFRS_AUTO_ATTACK.stop() end
+if _G.FFRS_BATTLE_AUTOMATION then _G.FFRS_BATTLE_AUTOMATION.disable('attack') end

@@ -1,0 +1,1 @@
+if _G.FFRS_BATTLE_AUTOMATION then _G.FFRS_BATTLE_AUTOMATION.disable('results') end
