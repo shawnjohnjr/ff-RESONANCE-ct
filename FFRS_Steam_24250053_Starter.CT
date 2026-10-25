@@ -2643,6 +2643,589 @@ showMessage('終盤裝備包完成，本次新增 '..added..' 件。請重開裝
 [DISABLE]
 </AssemblerScript>
     </CheatEntry>
+    <CheatEntry>
+      <ID>7</ID>
+      <Description>"07 自動普通攻擊（勾選啟用／取消停止）"</Description>
+      <VariableType>Auto Assembler Script</VariableType>
+      <AssemblerScript>[ENABLE]
+{$lua}
+if syntaxcheck then return end
+-- FFRS retail Steam build 24250053. Read-only lookup, no injected game calls.
+-- SDK reference: PolarWizard/final-fantasy-resonance-fix (MIT).
+local function connect()
+ local pid=assert(getProcessIDFromProcessName('FFRS-Win64-Shipping.exe'),'Resonance is not running')
+ if getOpenedProcessID()~=pid then openProcess(pid) end
+ local base=assert(getAddressSafe('FFRS-Win64-Shipping.exe'),'Game module unavailable')
+ local pe=base+readInteger(base+0x3c)
+ assert(readInteger(pe+8)==0x6A586B2F and readInteger(pe+0x50)==503013376,'Unsupported game build; stop and revalidate')
+ local pool=base+0x9CA1280
+ local names={}
+ local blocks=readInteger(pool+8)
+ assert(blocks and blocks&gt;=0 and blocks&lt;8192,'Invalid name pool')
+ local function name(id)
+  if not id or id&lt;0 then return '?' end
+  if names[id] then return names[id] end
+  local block=math.floor(id/65536);local off=(id%65536)*2
+  if block&gt;blocks then return '?' end
+  local p=readPointer(pool+0x10+block*8);if not p or p&lt;65536 then return '?' end
+  local h=readSmallInteger(p+off);if not h then return '?' end
+  if h&lt;0 then h=h+65536 end
+  local len=math.floor(h/64)
+  if len&gt;1023 then return '?' end
+  local s
+  if h%2==1 then s=readString(p+off+2,len*2,true)
+  else local b=readBytes(p+off+2,len,true);s=b and string.char(table.unpack(b)) end
+  names[id]=s or '?';return names[id]
+ end
+ assert(name(0)=='None','Name pool does not match this game')
+ local function oname(o) return o and o&gt;65536 and name(readInteger(o+0x18)) or '?' end
+ local classes={}
+ local function cname(o)
+  local c=o and readPointer(o+0x10)
+  if not c or c&lt;65536 then return '?' end
+  if not classes[c] then classes[c]=oname(c) end
+  return classes[c]
+ end
+ local world=readPointer(base+0x9AA0540)
+ assert(world and world&gt;65536 and cname(world)=='World','Wait for a loaded world')
+ local gi=readPointer(world+0x228)
+ assert(gi and gi&gt;65536,'Wait for the game instance')
+ local g=base+0x9D84DD0;local count=readInteger(g+0x14);local chunks=readPointer(g)
+ assert(count and count&gt;0 and count&lt;2000000 and chunks and chunks&gt;65536,'Invalid object array')
+ local chunkCount=readInteger(g+0x1c)
+ assert(chunkCount and chunkCount&gt;0 and chunkCount&lt;=math.ceil(2000000/65536),'Invalid object chunks')
+ local function at(i)
+  if i&lt;0 or i&gt;=count then return nil end
+  local ch=readPointer(chunks+math.floor(i/65536)*8)
+  return ch and ch&gt;65536 and readPointer(ch+(i%65536)*24) or nil
+ end
+ local function ismanager(o)
+  if not o or o&lt;65536 then return false end
+  local flags=readInteger(o+8)
+  return flags and (flags &amp; 0x10)==0 and cname(o)=='CPP_MuchaSaveDataManager' and readPointer(o+0x20)==gi
+ end
+ local cached=_G.FFRS_CT_SESSION
+ local manager,index
+ local tables={}
+ if cached and cached.pid==pid and cached.base==base and at(cached.index)==cached.manager and ismanager(cached.manager) and cached.tables then
+  manager,index=cached.manager,cached.index
+  tables=cached.tables
+ else
+  for i=0,count-1 do
+   local o=at(i)
+   if o and o&gt;65536 and cname(o)=='DataTable' then
+    local row=readPointer(o+0x28)
+    local rn=oname(row)
+    if rn=='CONSUMABLES_ITEM_DATA' or rn=='EQUIPMENT_ITEM_DATA' or rn=='UNIT_PARAMETER' or rn=='UNIT_LEVEL_PARAMETER_LIST' then
+     tables[#tables+1]={object=o,index=i,row=rn,name=oname(o)}
+    end
+   end
+   if ismanager(o) then assert(not manager,'Multiple active save managers; stop');manager,index=o,i end
+  end
+ end
+ assert(manager,'Active save manager not found; load a save first')
+ local save=readPointer(manager+0x60)
+ assert(save and save&gt;65536 and cname(save)=='CPP_MuchaGameSaveData','Active save data unavailable')
+ local flags=readInteger(save+8);assert(flags and (flags &amp; 0x10)==0,'Default object is not a save')
+ local gil=readInteger(save+0x28)
+ assert(gil and gil&gt;=0 and gil&lt;=2147483647,'Invalid money value')
+ local inv=readPointer(save+0xA8);local n=readInteger(save+0xB0);local cap=readInteger(save+0xB4)
+ assert(n and cap and n&gt;=0 and n&lt;=cap and cap&lt;=100000,'Invalid inventory array')
+ assert(n==0 or (inv and inv&gt;65536),'Invalid inventory pointer')
+ _G.FFRS_CT_SESSION={pid=pid,base=base,manager=manager,index=index,tables=tables}
+ return {at=at,oname=oname,cname=cname,name=name,tables=tables,pid=pid,base=base,manager=manager,save=save,gil=gil,inventory=inv,count=n,capacity=cap}
+end
+
+--[[
+Reference: https://github.com/Darjjj/resonance-game-boosters
+MIT License
+
+Copyright (c) 2026 FxDarj
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+]]
+
+-- Run reflected calls on the game's window thread, following the reference mod.
+-- No executable bytes or DLL files are replaced. Retain callback memory until
+-- process exit: UnhookWindowsHookEx does not guarantee an in-flight return ended.
+local function createGameThread(s)
+ local p=assert(allocateMemory(4096,nil,0x04),'Cannot allocate read/write game-thread mailbox')
+ local code=assert(allocateMemory(4096,nil,0x40),'Cannot allocate separate callback page')
+ local function api(n) return assert(getAddressSafe(n),'Missing Windows API: '..n) end
+ writeBytes(p,table.unpack({0,0,0,0,0,0,0,0}))
+ writeString(p+0x100,'UnrealWindow',true)
+ local hwnd=executeCodeEx(0,3000,api('user32.FindWindowW'),p+0x100,0)
+ assert(hwnd and hwnd~=0,'Game window unavailable')
+ local tid=executeCodeEx(0,3000,api('user32.GetWindowThreadProcessId'),hwnd,p+0x180)
+ assert(readInteger(p+0x180)==s.pid and tid~=0,'Game window belongs to another process')
+ local assembly=string.format([[
+define(mailbox,%X)
+define(callback,%X)
+define(clock,%X)
+define(foreground,%X)
+define(nextHook,%X)
+define(queryMemory,%X)
+label(forward)
+label(reject)
+label(checkGuard)
+label(guardByte)
+label(guardDword)
+label(guardNext)
+label(invoke)
+callback:
+ push rbx
+ push rsi
+ push rdi
+ push r12
+ sub rsp,98
+ mov [rsp+20],ecx
+ mov [rsp+28],rdx
+ mov [rsp+30],r8
+ test ecx,ecx
+ js forward
+ cmp edx,1
+ jne forward
+ mov rbx,mailbox
+ mov rcx,rbx
+ lea rdx,[rsp+40]
+ mov r8d,30
+ mov rax,queryMemory
+ call rax
+ cmp rax,30
+ jne forward
+ cmp dword ptr [rsp+60],1000
+ jne forward
+ mov eax,[rsp+64]
+ test eax,101
+ jnz forward
+ test eax,EE
+ jz forward
+ mov rax,[rsp+40]
+ add rax,[rsp+58]
+ lea rcx,[rbx+1000]
+ cmp rax,rcx
+ jb forward
+ cmp dword ptr [rbx],1
+ jne forward
+ mov eax,1
+ mov ecx,2
+ lock cmpxchg [rbx+4],ecx
+ jne forward
+ mov dword ptr [rbx+48],1
+ mov rax,clock
+ call rax
+ cmp rax,[rbx+8]
+ jae reject
+ mov dword ptr [rbx+48],2
+ mov rax,foreground
+ call rax
+ cmp rax,[rbx+38]
+ jne reject
+ mov dword ptr [rbx+48],3
+ mov edi,[rbx+30]
+ lea rsi,[rbx+400]
+checkGuard:
+ mov [rbx+4C],edi
+ test edi,edi
+ jz invoke
+ mov rcx,[rsi]
+ lea rdx,[rsp+40]
+ mov r8d,30
+ mov rax,queryMemory
+ call rax
+ cmp rax,30
+ jne reject
+ cmp dword ptr [rsp+60],1000
+ jne reject
+ mov eax,[rsp+64]
+ test eax,101
+ jnz reject
+ test eax,EE
+ jz reject
+ mov rax,[rsp+40]
+ add rax,[rsp+58]
+ mov rcx,[rsi]
+ mov edx,[rsi+10]
+ add rcx,rdx
+ cmp rax,rcx
+ jb reject
+ mov rax,[rsi]
+ mov rdx,[rsi+8]
+ cmp dword ptr [rsi+10],1
+ je guardByte
+ cmp dword ptr [rsi+10],4
+ je guardDword
+ cmp [rax],rdx
+ jne reject
+ jmp guardNext
+guardByte:
+ cmp [rax],dl
+ jne reject
+ jmp guardNext
+guardDword:
+ cmp [rax],edx
+ jne reject
+guardNext:
+ add rsi,18
+ dec edi
+ jmp checkGuard
+invoke:
+ mov dword ptr [rbx+48],0
+ mov rcx,[rbx+18]
+ mov rdx,[rbx+20]
+ mov r8,[rbx+28]
+ mov rax,[rbx+10]
+ call rax
+ mov dword ptr [rbx+4],3
+ jmp forward
+reject:
+ mov dword ptr [rbx+4],4
+forward:
+ xor ecx,ecx
+ mov edx,[rsp+20]
+ mov r8,[rsp+28]
+ mov r9,[rsp+30]
+ mov rax,nextHook
+ call rax
+ add rsp,98
+ pop r12
+ pop rdi
+ pop rsi
+ pop rbx
+ ret
+]],p,code,api('kernel32.GetTickCount64'),api('user32.GetForegroundWindow'),api('user32.CallNextHookEx'),api('kernel32.VirtualQuery'))
+ assert(autoAssemble(assembly),'Cannot assemble window-thread callback')
+ writeQword(p+0x38,hwnd)
+ local hook=executeCodeEx(0,3000,api('user32.SetWindowsHookExW'),3,code,0,tid)
+ assert(hook and hook~=0,'Cannot install game window callback')
+ writeInteger(p,1)
+ local stopped=false
+ local t={buffer=p+0x200,base=p,code=code,hwnd=hwnd,tid=tid}
+ function t.stop()
+  if stopped then return end
+  stopped=true
+  if getOpenedProcessID()~=s.pid or readSmallInteger(s.base)~=0x5A4D then return end
+  writeInteger(p,0)
+  -- An already executing command can finish; no new one will begin.
+  executeCodeEx(0,3000,api('user32.UnhookWindowsHookEx'),hook)
+ end
+ function t.call(process,target,fn,guards)
+  assert(not stopped,'Game-thread dispatcher stopped')
+  assert(#guards&lt;=100,'Too many call guards')
+  assert(getOpenedProcessID()==s.pid and readInteger(p)==1,'Mailbox unavailable; stop automation')
+  local state=readInteger(p+4)
+  assert(state~=1 and state~=2,'Previous command still pending; stop automation')
+  writeQword(p+0x10,process);writeQword(p+0x18,target)
+  writeQword(p+0x20,fn);writeQword(p+0x28,t.buffer)
+  writeInteger(p+0x30,#guards)
+  for i,g in ipairs(guards) do
+   local a=p+0x400+(i-1)*24
+   writeQword(a,g[1]);writeQword(a+8,g[2]);writeInteger(a+16,g[3] or 8)
+  end
+  -- CE and the game use the same Windows uptime clock in this Wine bottle.
+  writeQword(p+8,getTickCount()+1000)
+  writeInteger(p+4,1)
+  executeCodeEx(0,3000,api('user32.PostThreadMessageW'),tid,0,0,0)
+  local start=getTickCount()
+  repeat
+   state=readInteger(p+4)
+   if state==3 then return true end
+   if state==4 then return false end
+   sleep(5)
+  until getTickCount()-start&gt;1200
+  t.stop();error('Game window did not process the command; automation stopped')
+ end
+ return t
+end
+
+-- Reflection and state validation adapted from Darjjj/resonance-game-boosters (MIT).
+local function battleObjects(s)
+ local b={functions={},interfaces={},views={},cursor=0,seen=0}
+ local spec={
+  GetBattleUnitByUniqueId={'CPP_BFL_Battle',true},
+  GetUnitParameter={'CPP_BtlUnit',false},GetRelation={'CPP_UnitParameter',false},
+  GetUnitAI={'CPP_BtlUnit',false},GetFightSkillId={'CPP_BtlUnitAI',false},
+  CanActivateAction={'CPP_VM_BtlCmd',false},DecideActionKey={'CPP_VM_BtlCmd',false},
+  GetDefaultSkillTargetUnitUniqueId={'CPP_BFL_Battle',true},
+  DecideTarget={'CPP_VM_BtlCmd',false},IsEnableCommand={'CPP_BFL_Battle',true},
+  IsGamePaused={'GameplayStatics',true},IsPlayingEvent={'CPP_BFL_TalkEvent',true},
+  IsPlaying={'CPP_BFL_Movie',true},
+ }
+ local registry=s.base+0x9D84DD0
+ local inheritance={}
+ local scanChunks={}
+ local kinds={}
+ local function slot(index)
+  local count=readInteger(registry+0x14)
+  if not index or index&lt;0 or not count or index&gt;=count or count&gt;2000000 then return end
+  local chunks=readPointer(registry);if not chunks then return end
+  local chunk=readPointer(chunks+math.floor(index/65536)*8)
+  if chunk and chunk&gt;65536 then return chunk+(index%65536)*24 end
+ end
+ function b.live(o,defaults,guards)
+  if not o or o&lt;65536 then return end
+  local flags=readInteger(o+8);local index=readInteger(o+12)
+  if not flags or (flags &amp; (defaults and 0x18000 or 0x18010))~=0 then return end
+  local a=slot(index)
+  if not a or readPointer(a)~=o then return end
+  local serial=readInteger(a+16);if not serial then return end
+  if guards then
+   guards[#guards+1]={a,o};guards[#guards+1]={a+16,serial,4}
+   guards[#guards+1]={o+8,flags,4}
+  end
+  return tostring(index)..':'..tostring(serial)
+ end
+ function b.isa(o,class)
+  local c=readPointer(o+16)
+  if not c then return false end
+  local key=tostring(c)..':'..tostring(class)
+  if inheritance[key]~=nil then return inheritance[key] end
+  for _=1,32 do
+   if not c or c&lt;65536 then return false end
+   if type(class)=='number' and c==class or type(class)=='string' and s.oname(c)==class then inheritance[key]=true;return true end
+   c=readPointer(c+0x40)
+  end
+  inheritance[key]=false;return false
+ end
+ local function inspect(i)
+  local chunkIndex=math.floor(i/65536)
+  local chunk=scanChunks[chunkIndex]
+  if not chunk then
+   local chunks=readPointer(registry)
+   chunk=chunks and readPointer(chunks+chunkIndex*8);scanChunks[chunkIndex]=chunk
+  end
+  local a=chunk and chunk+(i%65536)*24;local o=a and readPointer(a)
+  if not o or o&lt;65536 then return end
+  local klass=readPointer(o+16);if not klass or klass&lt;65536 then return end
+  local cn=kinds[klass]
+  if not cn then
+   cn=s.oname(klass)
+   if cn~='Function' then
+    cn=b.isa(o,'CPP_UI_BattleSubsystem') and 'UI' or b.isa(o,'CPP_VM_BtlCmd') and 'View' or 'Other'
+   end
+   kinds[klass]=cn
+  end
+  if cn=='Function' then
+   local n=s.oname(o);local wanted=spec[n]
+   if wanted and b.live(o,false) then
+    local owner=readPointer(o+32);local flags=readInteger(o+0xB0)
+    if s.oname(owner)==wanted[1] and flags and (flags &amp; 0x400)~=0 and ((flags &amp; 0x2000)~=0)==wanted[2] then
+     b.functions[n]={object=o,owner=owner,static=wanted[2],defaults=readPointer(owner+0x110)}
+    end
+   end
+  elseif cn=='UI' and b.live(o,false) then b.interfaces[o]=true
+  elseif cn=='View' and b.live(o,false) then b.views[o]=true end
+ end
+ function b.scan(budget)
+  local n=assert(readInteger(registry+0x14));assert(n&lt;2000000,'Invalid object count')
+  -- Prioritize newly appended objects so the first battle does not wait a full scan.
+  local left=budget
+  while b.seen&lt;n and left&gt;0 do inspect(b.seen);b.seen=b.seen+1;left=left-1 end
+  while left&gt;0 do if b.cursor&gt;=n then b.cursor=0 end;inspect(b.cursor);b.cursor=b.cursor+1;left=left-1 end
+ end
+ function b.ready()
+  for n in pairs(spec) do if not b.functions[n] then return false,n end end
+  return true
+ end
+ local function add(g,a,v,size) g[#g+1]={a,v,size} end
+ function b.context()
+  local world=readPointer(s.base+0x9AA0540);local g={}
+  if not b.live(world,false,g) then return end
+  add(g,s.base+0x9AA0540,world)
+  local ui
+  for o in pairs(b.interfaces) do
+   if not b.live(o) then b.interfaces[o]=nil
+   elseif readPointer(o+32)==world and readBytes(o+0x80,1)==1 then
+    if ui then return end;ui=o
+   end
+  end
+  if not ui or not b.live(ui,false,g) then return end
+  local phase=readBytes(ui+0x50,1)
+  if not phase or phase&gt;2 then return end
+  add(g,ui+32,world);add(g,ui+0x80,1,1);add(g,ui+0x50,phase,1)
+  local manager=readPointer(ui+0x70)
+  local mid=b.live(manager,false,g)
+  if not mid or readPointer(manager+32)~=ui then return end
+  local typ=readBytes(manager+0x30,1);local state=readBytes(manager+0x31,1)
+  if not typ or typ&gt;2 or not state or state&gt;1 then return end
+  local asset=readPointer(manager+0x28)
+  local index=readInteger(manager+0x58);local count=readInteger(manager+0x68)
+  if not index or not count or count&lt;0 or count&gt;16 then return end
+  add(g,ui+0x70,manager);add(g,manager+32,ui)
+  add(g,manager+0x30,typ,1);add(g,manager+0x31,state,1);add(g,manager+0x28,asset)
+  local unit
+  if typ&lt;2 then
+   if index&lt;0 or index&gt;=count then return end
+   local list=readPointer(manager+0x60);if not list or list&lt;65536 then return end
+   unit=readInteger(list+index*4)
+   add(g,manager+0x58,index,4);add(g,manager+0x68,count,4);add(g,manager+0x60,list)
+   add(g,list+index*4,unit,4)
+  else index=0;unit=readInteger(manager+0x70);add(g,manager+0x70,unit,4) end
+  if not unit or unit&lt;0 then return end
+  local view,vid,visible
+  for o in pairs(b.views) do
+   if not b.live(o) then b.views[o]=nil
+   elseif readPointer(o+0x68)==asset then
+    local v=readBytes(o+0x199,1)
+    if v and v&lt;=1 and (state==0 and v==1 or state==1 and o==b.activeView) then
+     if view then return end;view=o;visible=v
+    end
+   end
+  end
+  if not view then return end
+  vid=b.live(view,false,g)
+  add(g,view+0x68,asset);add(g,view+0x199,visible,1)
+  if state==0 then b.activeView=view end
+  return {world=world,unit=unit,state=state,view=view,guards=g,
+   key=world..'/'..mid..'/'..vid..'/'..unit..'/'..(index+typ*0x1000000)}
+ end
+ return b
+end
+
+-- Ordinary Attack only. Command and target selection use the game's own checks.
+local function battleActions(s,objects,thread)
+ local p=thread.buffer
+ local actions={attacks=0,targets=0,pending=nil,status='Waiting for battle'}
+ local zero={};for i=1,128 do zero[i]=0 end
+ local function invoke(n,target,ctx,fill)
+  local f=assert(objects.functions[n],'Missing function '..n)
+  target=f.static and f.defaults or target
+  local g={};for _,v in ipairs(ctx.guards) do g[#g+1]=v end
+  if not objects.live(f.object,false,g) or not objects.live(target,f.static,g) or not objects.isa(target,f.owner) then return false end
+  local flags=readInteger(f.object+0xB0)
+  if not flags or (flags &amp; 0x400)==0 or ((flags &amp; 0x2000)~=0)~=f.static then return false end
+  g[#g+1]={f.object+0xB0,flags,4};g[#g+1]={f.object+32,f.owner}
+  local vtable=readPointer(target);local process=vtable and readPointer(vtable+0x4C*8)
+  if not process or process&lt;s.base or process&gt;=s.base+503013376 then return false end
+  g[#g+1]={target,vtable};g[#g+1]={vtable+0x4C*8,process}
+  writeBytes(p,zero)
+  if fill then fill(p) end
+  return thread.call(process,target,f.object,g)
+ end
+ local function safeScene(ctx)
+  if not invoke('IsGamePaused',nil,ctx,function(a) writeQword(a,ctx.world);writeBytes(a+8,1) end) or readBytes(p+8,1)~=0 then return false end
+  for _,n in ipairs({'IsPlayingEvent','IsPlaying'}) do
+   if not invoke(n,nil,ctx,function(a) writeBytes(a,1) end) or readBytes(p,1)~=0 then return false end
+  end
+  return true
+ end
+ local function unit(ctx,id,relation)
+  if not invoke('GetBattleUnitByUniqueId',nil,ctx,function(a) writeInteger(a,id);writeBytes(a+4,1) end) then return end
+  local actor=readPointer(p+8)
+  if not objects.live(actor) then return end
+  local outer=readPointer(actor+32)
+  if not outer or readPointer(outer+0xC0)~=ctx.world then return end
+  if not invoke('GetUnitParameter',actor,ctx) then return end
+  local parameter=readPointer(p)
+  if not invoke('GetRelation',parameter,ctx) or readBytes(p,1)~=relation then return end
+  return actor
+ end
+ function actions.probe()
+  local ctx=objects.context();if not ctx then return false,'No command screen' end
+  if not safeScene(ctx) then return false,'Paused, unfocused, cinematic or changed context' end
+  local actor=unit(ctx,ctx.unit,1);if not actor then return false,'No live friendly unit' end
+  if not invoke('GetUnitAI',actor,ctx) then return false,'No AI' end
+  local ai=readPointer(p)
+  if not ai or readPointer(ai+0x28)~=actor or not invoke('GetFightSkillId',ai,ctx) then return false,'No basic attack' end
+  local skill=readInteger(p)
+  return true,ctx,skill
+ end
+ function actions.step()
+  local ctx=objects.context()
+  if not ctx then actions.pending=nil;actions.status='Waiting for battle';return end
+  if not safeScene(ctx) then actions.status='Paused';return end
+  local pending=actions.pending
+  if pending and (pending.key~=ctx.key or pending.stage==2 and ctx.state==0) then pending=nil;actions.pending=nil end
+  local actor=unit(ctx,ctx.unit,1);if not actor then actions.pending=nil;return end
+  if not pending then
+   if ctx.state~=0 then return end
+   if not invoke('GetUnitAI',actor,ctx) then return end
+   local ai=readPointer(p)
+   if not ai or readPointer(ai+0x28)~=actor or not invoke('GetFightSkillId',ai,ctx) then return end
+   local skill=readInteger(p);if not skill or skill&lt;=0 then return end
+   local function key(a) writeBytes(a,1);writeInteger(a+4,skill) end
+   if not invoke('CanActivateAction',ctx.view,ctx,key) or readBytes(p+8,1)~=1 then return end
+   if not invoke('IsEnableCommand',nil,ctx,function(a) writeInteger(a,ctx.unit);writeInteger(a+4,skill) end) or readBytes(p+8,1)~=1 then return end
+   if invoke('DecideActionKey',ctx.view,ctx,key) then
+    actions.pending={key=ctx.key,skill=skill,stage=1};actions.attacks=actions.attacks+1
+    actions.status='Attack selected'
+   end
+  elseif pending.stage==1 and ctx.state==1 then
+   if not invoke('GetDefaultSkillTargetUnitUniqueId',nil,ctx,function(a)
+    writeInteger(a,ctx.unit);writeInteger(a+4,pending.skill);writeInteger(a+8,-1)
+   end) then return end
+   local enemy=readInteger(p+8)
+   if not enemy or enemy&lt;0 or not unit(ctx,enemy,2) then return end
+   if invoke('DecideTarget',ctx.view,ctx,function(a)
+    writeInteger(a+0x80,enemy);writeQword(a,a+0x80);writeInteger(a+8,1);writeInteger(a+12,1)
+   end) then
+    pending.stage=2;actions.targets=actions.targets+1;actions.status='Attack confirmed'
+   end
+  end
+ end
+ return actions
+end
+
+
+-- A checkbox controls this session only; no save data or game files are changed.
+if _G.FFRS_AUTO_ATTACK and _G.FFRS_AUTO_ATTACK.running then return end
+local s=connect()
+local objects=battleObjects(s)
+local thread=createGameThread(s)
+local actions=battleActions(s,objects,thread)
+local runtime={running=true,pid=s.pid,actions=actions,objects=objects,thread=thread}
+_G.FFRS_AUTO_ATTACK=runtime
+local timer=createTimer(nil,false);runtime.timer=timer;timer.Interval=150
+function runtime.stop()
+ if not runtime.running then return end
+ runtime.running=false
+ timer.Enabled=false;timer.destroy()
+ pcall(thread.stop)
+ actions.pending=nil;actions.status='Stopped'
+end
+timer.OnTimer=function()
+ if not runtime.running then return end
+ local ok,err=pcall(function()
+  if getOpenedProcessID()~=s.pid or readSmallInteger(s.base)~=0x5A4D then
+   runtime.stop();return
+  end
+  objects.scan(256)
+  local ready,missing=objects.ready()
+  if not ready then actions.status='Preparing: '..missing;return end
+  actions.step()
+ end)
+ if not ok then
+  runtime.stop();runtime.error=tostring(err)
+  print('FFRS Auto Attack stopped: '..runtime.error)
+ end
+end
+timer.Enabled=true
+
+{$asm}
+[DISABLE]
+{$lua}
+if syntaxcheck then return end
+if _G.FFRS_AUTO_ATTACK then _G.FFRS_AUTO_ATTACK.stop() end
+
+{$asm}
+</AssemblerScript>
+    </CheatEntry>
   </CheatEntries>
   <UserdefinedSymbols />
 </CheatTable>

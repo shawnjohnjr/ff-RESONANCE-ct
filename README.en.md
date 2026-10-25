@@ -14,12 +14,13 @@ For Steam **build 24250053**. Tested on macOS with standard CrossOver and Window
 | 04 | Select an owned item and change its quantity: 1–99 |
 | 05 | Raise current party members to Lv.99 and recalculate their parameters through game functions |
 | 06 | Endgame equipment pack: top up 8 weapons, 3 armor types, and 4 accessories |
+| 07 | Automatic basic Attack: runs while checked; uncheck to stop |
 
-Entries are independent and disabled by default. Changes are applied once, without freezing values. Unchecking an entry does not undo its changes. To run it again, uncheck and recheck it.
+Entries are independent and disabled by default. Entries 01–06 run once, without freezing values; unchecking does not undo changes. Uncheck and recheck to run them again. Entry 07 runs continuously while checked; unchecking stops new commands.
 
 ## Usage
 
-1. Back up your save, enter a map, and remain in a menu. Do not battle, use items, shop, or change maps while an operation is running.
+1. Back up your save. For entries 01–06, enter a map and remain in a menu; do not battle, use items, shop, or change maps during the operation. For entry 07, follow the auto-attack instructions below.
 2. Run Windows CE in the same CrossOver bottle as the game and load the [CT](FFRS_Steam_24250053_Starter.CT).
 3. Enable entry 01 and compare its values with the game menu. The first object scan takes time; avoid repeated clicks.
 4. Select a feature. The item editor presents a list first, then asks for a quantity. Canceling makes no change.
@@ -64,6 +65,20 @@ The script validates all equipment IDs and categories before granting items, the
 This affects only main characters currently in the party. It does not unlock characters who have not joined or modify visions. It sums each character's level table to determine the EXP needed for Lv.99, checks that threshold with the game's level calculation, then calls `SetPlayableUnitExperience` to update saved EXP and live character parameters.
 
 No battle is needed for the change to take effect. **Current HP and MP are not automatically refilled**; maximum HP/MP and other parameters are recalculated. Characters already at the target EXP are not rewritten. If execution fails midway, inspect the character state: this is not an atomic operation across the party, and completed updates are not automatically undone.
+
+### Automatic basic Attack
+
+Entry 07 adapts the MIT-licensed [Resonance Game Boosters](https://github.com/Darjjj/resonance-game-boosters). It uses the game's existing action selection, command eligibility checks, and target selection functions to make the current friendly character use basic Attack. It does not restore the disabled native AutoBattle feature, use magic/items, or automatically dismiss battle results. If basic Attack is unavailable, it waits.
+
+- Keep Windows Cheat Engine open and entry 07 checked. Enable it again after each game launch. It does not persist in saves or install an ASI/DLL mod.
+- Object discovery on each enable can take tens of seconds. Keep the game in the foreground at an ordinary battle's command selection screen.
+- No commands are sent when Windows/Wine reports another foreground window, the game is paused, or a cinematic is playing. Focus reporting for every macOS window-switching scenario is not guaranteed; uncheck the entry to explicitly pause automation.
+- Unchecking stops new commands; an already confirmed attack may finish its animation. If stopped during target selection, cancel or complete that command manually before enabling again.
+- Polling stops when the game exits or CE attaches to another process. Closing CE stops new requests; an in-flight request is not guaranteed to be canceled.
+
+A game-window message callback invokes `ProcessEvent` on the game's own thread without overwriting existing game/engine code. Calls have a deadline and validate the current world, registry slots, serial numbers, and command state; changed state rejects the call. Disabling removes the hook. Small allocations remain until game exit to avoid freeing callback code while an invocation could still be returning.
+
+**Earlier crash and fix:** An unpublished prototype crashed when its callback read control data, before sending an attack. The dump identifies that failed access but does not establish why the data became unreadable. The revised dispatcher separates read/write control data from callback code and uses `VirtualQuery` to validate the control region and each guard address before reading. In an isolated test, deliberately making control data inaccessible was safely skipped; calls resumed after restoring access. Invalid addresses and mismatched state also rejected execution. This does not claim to establish an underlying CrossOver or Rosetta cause.
 
 ## CrossOver: missing VC++ x64 message at launch
 
@@ -133,7 +148,9 @@ What was changed:
 
 ## Validation status — October 26, 2026
 
-- All six Lua entries passed CE syntax checks.
+- Lua enable/disable blocks for all seven entries compiled in CE 7.7; the original six scripts and descriptions remain byte-for-byte unchanged.
+- Auto Attack: the user confirmed the single-action prototype. The actual entry 07 then selected and confirmed 3 attacks across two battles; the user confirmed normal visuals and resumed attacks after returning to the foreground. The first result screen waited for manual confirmation. Unchecking cleared the dispatcher enable flag and stopped the counters; after re-enabling and exiting the game normally, polling stopped without a callback error.
+- Isolated dispatcher tests: 100 revised calls passed; 20 window messages safely skipped intentionally inaccessible control data, and calls resumed after access was restored. Mismatched state and unreadable guard addresses rejected calls. The underlying reason the original control data became inaccessible has not been established.
 - Bilingual picker: all 505 live data-table rows passed name/ID/category matching. Labels and quantity prompts for the nine initially owned supported items were checked; cancellation left the inventory unchanged.
 - Gil: changed from 600 to 1,000,000 and read back successfully.
 - Items: the actual entry 04 script changed Potion from 13 to 14 and back to 13. The entire inventory matched its original bytes afterward.
@@ -144,6 +161,11 @@ What was changed:
 - **The in-game item/new-equipment display and persistence after saving and reloading have not been verified.** Item tests supplied choices and input values to the actual CT scripts; manual interaction with the selection dialog has not been claimed as tested.
 
 ## Source layout
+
+- `src/game_thread_dispatch.lua`: game-window thread calls with memory checks and deadlines.
+- `src/battle_objects.lua`: battle object/function discovery and command context validation.
+- `src/battle_actions.lua`: basic Attack and target selection flow.
+- `src/enable_auto_attack.lua` / `src/disable_auto_attack.lua`: polling lifecycle and process-loss handling.
 
 - `src/game_connection.lua`: executable checks, active-save lookup, and data-table discovery.
 - `src/item_names.lua`: English/Traditional Chinese item labels and categories; names only, without descriptions or dialogue.

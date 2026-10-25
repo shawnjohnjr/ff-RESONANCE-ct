@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional
 import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parent
@@ -27,6 +28,8 @@ class TableEntry:
     title: str
     source: str
     uses_gameplay_helpers: bool = False
+    helper_sources: tuple[str, ...] = ()
+    disable_source: Optional[str] = None
 
 
 # IDs are stable; list order controls display order only.
@@ -46,6 +49,12 @@ TABLE_ENTRIES = (
         6, "06 全角色終盤裝備包（補足背包）",
         "grant_endgame_equipment.lua", uses_gameplay_helpers=True,
     ),
+    TableEntry(
+        7, "07 自動普通攻擊（勾選啟用／取消停止）",
+        "enable_auto_attack.lua",
+        helper_sources=("game_thread_dispatch.lua", "battle_objects.lua", "battle_actions.lua"),
+        disable_source="disable_auto_attack.lua",
+    ),
 )
 
 
@@ -60,8 +69,12 @@ def validate_entries(entries):
             raise ValueError(f"Duplicate entry source: {entry.source}")
         seen_ids.add(entry.entry_id)
         seen_sources.add(entry.source)
-        if not (SOURCE_DIR / entry.source).is_file():
-            raise FileNotFoundError(SOURCE_DIR / entry.source)
+        sources = (entry.source, *entry.helper_sources)
+        if entry.disable_source:
+            sources += (entry.disable_source,)
+        for source in sources:
+            if not (SOURCE_DIR / source).is_file():
+                raise FileNotFoundError(SOURCE_DIR / source)
 
 
 def read_source(filename):
@@ -71,11 +84,16 @@ def read_source(filename):
 def assemble_script(entry, connection, gameplay_helpers):
     """Keep the emitted script layout stable for byte-for-byte verification."""
     helpers = gameplay_helpers if entry.uses_gameplay_helpers else ""
+    helpers += "".join(read_source(source) + "\n" for source in entry.helper_sources)
     action = read_source(entry.source)
+    disable = ""
+    if entry.disable_source:
+        disable = ("{$lua}\nif syntaxcheck then return end\n"
+                   + read_source(entry.disable_source) + "\n{$asm}\n")
     return (
         "[ENABLE]\n{$lua}\nif syntaxcheck then return end\n"
         + connection + "\n" + helpers + "\n" + action
-        + "\n{$asm}\n[DISABLE]\n"
+        + "\n{$asm}\n[DISABLE]\n" + disable
     )
 
 

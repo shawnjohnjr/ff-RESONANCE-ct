@@ -1,0 +1,1 @@
+if _G.FFRS_AUTO_ATTACK then _G.FFRS_AUTO_ATTACK.stop() end
