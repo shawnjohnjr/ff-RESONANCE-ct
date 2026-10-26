@@ -13,7 +13,7 @@ For Steam **build 24250053**. Tested on macOS with standard CrossOver and Window
 | 03 | Read-only inventory list: internal item IDs and quantities |
 | 04 | Select an owned item and change its quantity: 1–99 |
 | 05 | Raise current party members to Lv.99 and recalculate their parameters through game functions |
-| 06 | Endgame equipment pack: top up 8 weapons, 5 armor types, and 7 accessories |
+| 06 | Endgame equipment pack: top up 8 weapons, 5 armor types, and 8 accessories |
 | 07 | Automatic basic Attack: runs while checked; uncheck to stop |
 | 08 | Automatically confirm battle results: standalone or together with entry 07 |
 | 09 | Upgrade owned visions: maximum awakening/current-party MR, one vision or all owned |
@@ -70,6 +70,8 @@ The following equipment from the [Twelve Arms / arena rewards guide](https://for
 | Gold Hairpin+ / 黃金頭飾·改 | 12097 | Accessory |
 | Thunder God’s Earrings / 雷帝的耳環 | 12080 | Accessory |
 | Ribbon / 緞帶 | 12065 | Accessory |
+
+Also includes **Circlet of Enlightenment / 解脫之輪 (12069)**, topped up to at least 8 in inventory. It adds 5% Limit gauge per turn and is used in the Nichol build below. Owning 1 adds 7; owning 8 or more adds nothing.
 
 Ribbon and Super Ribbon remain separate items. The Shinryu reward mentioned in the guide is excluded from this equipment pack. Names use the game's English and Traditional Chinese localization rather than literal translations from Japanese.
 
@@ -144,6 +146,25 @@ Adapted from [Resonance Game Boosters](https://github.com/Darjjj/resonance-game-
 Before sending, it validates the result widget, current page, result model, and viewport root. Active system/modal widgets, pausing, or cinematic playback block confirmation. Confirmation stops when results finish or gameplay resumes. If confirmation retires the widget, release is not redirected to another screen. CE must remain open, and Windows/Wine must report the game as foreground.
 
 Both entries share one game-thread callback. Disabling both stops polling and removes that callback. A confirmation already dispatched may complete; unchecking cannot undo normal battle rewards already collected. Ordinary battle results were tested; special story battles, defeat/retry flows, and every reward-page variant have not been exhaustively tested.
+
+## Build reference: Nichol's opening support sequence
+
+Based on [Yuzu GameLab's Nichol equipment and vision guide](https://www.youtube.com/watch?v=nMJ8TWN3NO0). The sequence below was read from the battle footage, with skill names and effects checked against this build's Traditional Chinese data. This is a manual-play reference, not a new CT feature. The video's million-damage result has not been reproduced in this project's live tests.
+
+The shown build uses Last Resort+, Circlet of Enlightenment, Gold Hairpin+, and Amelia. Equipped abilities include Terra MASTER, Firion MASTER, the starting Limit-gauge passive, the passive that charges the gauge after a non-damaging action, triple Limit-gauge gain, and the first-action passive. Nichol must personally acquire the relevant vision mastery abilities; owning the visions or accessories alone is insufficient. Chinese skill labels below match the footage and avoid inventing official English names.
+
+| Step | Action | Purpose |
+|---|---|---|
+| 1 | Use W臂腕 | Queue two commands in one action |
+| 2 | First command: 轉戰自如之策, targeting Nichol himself | Enables another action after a formation skill; this effect can trigger only once per turn |
+| 3 | Second command: 攻勢之陣 | Raises the party's break damage and triggers the extra action |
+| 4 | Use W臂腕 again | Queue the second pair of commands |
+| 5 | First command: Limit skill 鏡面晶寫之術 | Gives the party a one-use effect that executes the selected action twice |
+| 6 | Second command: 突擊之陣 | Raises the party's critical-hit rate before the attackers act |
+
+Video references: [first pair at approximately 2:55–3:14](https://www.youtube.com/watch?v=nMJ8TWN3NO0&t=175s), [second pair at approximately 3:19–3:49](https://www.youtube.com/watch?v=nMJ8TWN3NO0&t=199s). Apply 轉戰自如之策 to Nichol before using 攻勢之陣. Combined with starting gauge, non-damaging-action charging, and triple gauge gain, the footage shows enough gauge for the Limit skill after the first pair. Circlet of Enlightenment also supplies 5% Limit gauge per turn. The title's “zero-turn” wording does not mean unconditional or unlimited actions.
+
+**Entry 07 performs only basic attacks; it does not execute this sequence.** Disable entry 07 when following the build manually. This section covers Nichol's opening only; subsequent teammate commands, enemy mechanics, and final damage require their own setup.
 
 ## CrossOver: missing VC++ x64 message at launch
 

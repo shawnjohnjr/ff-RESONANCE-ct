@@ -2623,6 +2623,7 @@ local pack={
  {12097,8,3,0}, -- Gold Hairpin+ / 黃金頭飾·改
  {12080,8,3,0}, -- Thunder God’s Earrings / 雷帝的耳環
  {12065,8,3,0}, -- Ribbon / 緞帶 (distinct from Super Ribbon)
+ {12069,8,3,0}, -- Circlet of Enlightenment / 解脫之輪
 }
 local catalog={}
 for _,r in ipairs(tableRows(s,findTable(s,'EQUIPMENT_ITEM_DATA'),'EQUIPMENT_ITEM_DATA')) do catalog[readInteger(r.p+8)]=r.p end
