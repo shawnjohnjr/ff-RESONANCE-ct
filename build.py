@@ -88,6 +88,18 @@ TABLE_ENTRIES = (
         "acquire_visions.lua", helper_sources=VISION_ACQUISITION_HELPER_SOURCES,
         disable_source="disable_vision_acquisition.lua",
     ),
+    TableEntry(
+        11, "11 目前行動角色極限技槽補滿（一次）",
+        "refill_limit_gauge.lua",
+        helper_sources=("game_thread_dispatch.lua", "battle_direct_links.lua", "battle_objects.lua", "battle_calls.lua", "memory_checks.lua"),
+        disable_source="disable_limit_refill.lua",
+    ),
+    TableEntry(
+        12, "12 魔人菲娜解鎖地獄隕石（一次）",
+        "unlock_fel_meteor.lua",
+        helper_sources=("game_thread_dispatch.lua", "battle_direct_links.lua", "battle_objects.lua", "memory_checks.lua"),
+        disable_source="disable_fel_meteor.lua",
+    ),
 )
 
 

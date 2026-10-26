@@ -187,14 +187,14 @@ forward:
   -- An already executing command can finish; no new one will begin.
   executeCodeEx(0,3000,api('user32.UnhookWindowsHookEx'),hook)
  end
- function t.call(process,target,fn,guards)
+ function t.call(process,target,fn,guards,nativeR8)
   assert(not stopped,'Game-thread dispatcher stopped')
   assert(#guards<=100,'Too many call guards')
   assert(getOpenedProcessID()==s.pid and readInteger(p)==1,'Mailbox unavailable; stop automation')
   local state=readInteger(p+4)
   assert(state~=1 and state~=2,'Previous command still pending; stop automation')
   writeQword(p+0x10,process);writeQword(p+0x18,target)
-  writeQword(p+0x20,fn);writeQword(p+0x28,t.buffer)
+  writeQword(p+0x20,fn);writeQword(p+0x28,nativeR8 or t.buffer)
   writeInteger(p+0x30,#guards)
   for i,g in ipairs(guards) do
    local a=p+0x400+(i-1)*24

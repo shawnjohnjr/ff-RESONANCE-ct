@@ -18,6 +18,8 @@ For Steam **build 24250053**. Tested on macOS with standard CrossOver and Window
 | 08 | Automatically confirm battle results: standalone or together with entry 07 |
 | 09 | Upgrade owned visions: maximum awakening/current-party MR, one vision or all owned |
 | 10 | Acquire one missing vision or all 26; skip owned visions |
+| 11 | Fill the current acting character’s Limit gauge once; no automatic casting |
+| 12 | Unlock Fel Meteor for Dark Fina once; skip if already learned |
 
 Entries are independent and disabled by default. Entries 01–06 run once, without freezing values; unchecking does not undo changes. Uncheck and recheck to run them again. Entries 07 and 08 run while checked and can be disabled separately. Their shared callback is removed when both are disabled.
 
@@ -146,6 +148,14 @@ Adapted from [Resonance Game Boosters](https://github.com/Darjjj/resonance-game-
 Before sending, it validates the result widget, current page, result model, and viewport root. Active system/modal widgets, pausing, or cinematic playback block confirmation. Confirmation stops when results finish or gameplay resumes. If confirmation retires the widget, release is not redirected to another screen. CE must remain open, and Windows/Wine must report the game as foreground.
 
 Both entries share one game-thread callback. Disabling both stops polling and removes that callback. A confirmation already dispatched may complete; unchecking cannot undo normal battle rewards already collected. Ordinary battle results were tested; special story battles, defeat/retry flows, and every reward-page variant have not been exhaustively tested.
+
+### Refill the current acting character's Limit gauge
+
+Entry 11 fills the friendly character currently awaiting a normal battle command to their live Limit-gauge cap once. Disable 07/08, wait for the intended character's turn, enable 11, then return to the game and keep it foreground. Choose a Limit Burst manually afterward. Uncheck and recheck to refill again. Unchecking cancels a pending refill but does not undo one already completed.
+
+This fills the gauge only: it does not unlock skills, cast automatically, or freeze the value. Resonance selection, target selection, enemies, pause, and cinematics are excluded. It stops after two minutes without an eligible screen. The game-thread dispatcher and lifetime checks are reused; the native setter receives the battle ID from the character parameter, not the command view's unique ID. The result is read back against the character's live cap; this build's global maximum is 200 (two bars).
+
+Live test (2026-10-27, standard CrossOver): the formal script changed the acting character's gauge from 65 to 200, verified by readback and the user's visual confirmation. Dark Fina was also refilled from 0 to 200; the user confirmed that her Limit Burst executed normally with its animation. It does not issue a save command; the game's own autosaves can still persist gameplay state.
 
 ## Build reference: Nichol's opening support sequence
 
@@ -304,3 +314,9 @@ See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for data-layout references 
 `VISION_HELPER_SOURCES` defines vision helper assembly separately from continuous battle polling. Extend the corresponding vision modules without growing the inventory or character-level modules.
 
 Entry 10 modules: `src/vision_acquisition.lua` handles the catalog, missing roster, native acquisition and readback; `src/acquire_visions.lua` handles dialogs; `tests/vision_acquisition_test.lua` covers repeats, growth preservation and invalid data.
+
+### Dark Fina: Fel Meteor
+
+Entry 12 reuses the live-tested native learning and parameter-refresh calls to add Fel Meteor (408160) to Dark Fina, preserving existing skills and EXP. Disable 07/08, leave battle, stay in a normal menu, enable the entry, and return to the game foreground. Already-learned skills are skipped. Unchecking cancels a pending action; it does not remove a learned skill.
+
+This directly unlocks the Digital Deluxe bonus skill; it does not grant the tome, other bonuses, or change Steam DLC ownership. Skill display, battle execution, and animation were confirmed in-game. Persistence after saving and reloading has not been verified. No save command is issued, but game autosaves may preserve the change; retain a pre-modification save. Use entry 11 separately to refill the Limit gauge.
