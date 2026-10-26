@@ -17,6 +17,7 @@ For Steam **build 24250053**. Tested on macOS with standard CrossOver and Window
 | 07 | Automatic basic Attack: runs while checked; uncheck to stop |
 | 08 | Automatically confirm battle results: standalone or together with entry 07 |
 | 09 | Upgrade owned visions: maximum awakening/current-party MR, one vision or all owned |
+| 10 | Acquire one missing vision or all 26; skip owned visions |
 
 Entries are independent and disabled by default. Entries 01–06 run once, without freezing values; unchecking does not undo changes. Uncheck and recheck to run them again. Entries 07 and 08 run while checked and can be disabled separately. Their shared callback is removed when both are disabled.
 
@@ -95,6 +96,19 @@ Turn off entries 07/08 and remain at the vision menu on a map. After accepting t
 - This is not an atomic batch. Cancellation, focus loss or an error can leave earlier upgrades completed; inspect the game before saving or retrying. Canceling a selection dialog makes no changes.
 
 Live validation (2026-10-26): Leah awakening was tested first, then formal entry 09 completed 11 upgrades: the other two awakenings and three party members × three visions for MR. The user confirmed Tronn, Leah and Warrior of Light at 3 stars and current-party MR maxed; native getters returned MR 9. Owned IDs, non-party points, inventory and Gil were unchanged. Canceling either selection dialog also preserved the data. Persistence after saving and restarting the game has not been separately tested.
+
+### Acquire visions
+
+Entry 10 acquires one missing vision or fills out all 26 supported visions, including Sephiroth. The picker uses official English/Traditional Chinese labels. Owned visions are skipped and retain their awakening and per-character MR. New visions start with normal default growth; entry 09 can upgrade them separately.
+
+Back up your save, turn off 07/08, wait for 09 to finish, and remain in a field menu. Select the scope, enter `YES`, then keep the game foreground until completion. Reopen the vision menu and save to a new slot. Unchecking stops remaining grants without undoing completed ones.
+
+- Calls the supported build's native acquisition routine on the game window thread. The game allocates the vision array and initializes MRP records for all eight playable characters; the CT does not fabricate these containers.
+- Validates the game's Vision DataTable against 26 known IDs, the build, function signatures, world, save, battle state and object lifetimes. Each grant is checked for owned count, unchanged existing growth, eight initial MRP records, Gil and inventory.
+- The native routine updates collection achievements and **may immediately unlock Steam achievements**. Unchecking or loading an older save does not undo those achievements.
+- Does not complete shrine questions, quests or associated boss events. Later acquisition through every original story event has not been fully tested. Correct menus and saves do not establish compatibility with the entire story.
+
+Live validation (2026-10-26, standard CrossOver): Amelia was acquired first and the user confirmed viewing/equipping her worked. Formal entry 10 then added the remaining 21, reaching 26. Per-grant checks passed; the original four visions' growth, Gil and inventory were preserved. The user confirmed the full roster displayed correctly and Steam collection achievements appeared. Both cancellation paths and repeating the action with all visions owned passed without additional grants. The user saved to a new slot, reloaded it in-game, and confirmed all 26 visions remained with the vision menu working normally.
 
 ### Automatic basic Attack
 
@@ -267,3 +281,5 @@ The repository does not include game files, personal saves, memory dumps, or loc
 See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for data-layout references and licensing. This is an unofficial tool and is not affiliated with Square Enix.
 
 `VISION_HELPER_SOURCES` defines vision helper assembly separately from continuous battle polling. Extend the corresponding vision modules without growing the inventory or character-level modules.
+
+Entry 10 modules: `src/vision_acquisition.lua` handles the catalog, missing roster, native acquisition and readback; `src/acquire_visions.lua` handles dialogs; `tests/vision_acquisition_test.lua` covers repeats, growth preservation and invalid data.

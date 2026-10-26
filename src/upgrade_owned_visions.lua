@@ -1,3 +1,4 @@
+assert(not (_G.FFRS_VISION_ACQUISITION and _G.FFRS_VISION_ACQUISITION.running),'Wait for entry 10 to finish')
 local previous=_G.FFRS_VISION_UPGRADE
 assert(not previous or not previous.running,'A vision upgrade is already running')
 local battle=_G.FFRS_BATTLE_AUTOMATION

@@ -34,6 +34,12 @@ VISION_HELPER_SOURCES = (
 )
 
 
+VISION_ACQUISITION_HELPER_SOURCES = (
+    "game_thread_dispatch.lua", "battle_direct_links.lua", "battle_objects.lua",
+    "unreal_tables.lua", "memory_checks.lua", "vision_names.lua",
+    "vision_progression.lua", "vision_acquisition.lua",
+)
+
 @dataclass(frozen=True)
 class TableEntry:
     entry_id: int
@@ -76,6 +82,11 @@ TABLE_ENTRIES = (
         9, "09 強化已持有幻兵（覺醒／目前隊伍 MR）",
         "upgrade_owned_visions.lua", helper_sources=VISION_HELPER_SOURCES,
         disable_source="disable_vision_upgrade.lua",
+    ),
+    TableEntry(
+        10, "10 取得幻兵（單隻／補齊全部）",
+        "acquire_visions.lua", helper_sources=VISION_ACQUISITION_HELPER_SOURCES,
+        disable_source="disable_vision_acquisition.lua",
     ),
 )
 
