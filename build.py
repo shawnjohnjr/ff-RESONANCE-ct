@@ -103,9 +103,10 @@ TABLE_ENTRIES = (
         disable_source="disable_fel_meteor.lua",
     ),
     TableEntry(
-        13, "13 地圖移速（1／1.5／2／3 倍，單次）",
+        13, "13 地圖移速（自動徒步 3 倍／騎乘 3.5 倍）",
         "edit_map_movement_speed.lua",
-        helper_sources=("battle_direct_links.lua", "battle_objects.lua", "memory_checks.lua", "map_movement_speed.lua"),
+        helper_sources=("battle_direct_links.lua", "battle_objects.lua", "memory_checks.lua", "map_movement_speed.lua", "map_speed_runtime.lua"),
+        disable_source="disable_map_speed.lua",
     ),
 )
 

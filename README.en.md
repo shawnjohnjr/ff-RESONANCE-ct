@@ -20,7 +20,7 @@ For Steam **build 24250053**. Tested on macOS with standard CrossOver and Window
 | 10 | Acquire one missing vision or all 26; skip owned visions |
 | 11 | Fill the current acting character’s Limit gauge once; no automatic casting |
 | 12 | Unlock Fel Meteor for Dark Fina once; skip if already learned |
-| 13 | One-shot map walking/running/jogging speed: 1x, 1.5x, 2x, 3x |
+| 13 | Automatic map speed: on foot 3x / mounted 3.5x; optional one-shot multipliers |
 
 Entries are independent and disabled by default. Entries 01–06 run once, without freezing values; unchecking does not undo changes. Uncheck and recheck to run them again. Entries 07 and 08 run while checked and can be disabled separately. Their shared callback is removed when both are disabled.
 
@@ -330,8 +330,8 @@ After acquiring a chocobo, use the key in the game’s Items menu to switch its 
 
 ### Map movement speed
 
-Use entry 13 while on foot with free map control. Choose 1.5x, 2x or 3x relative to the recorded baseline, without compounding; choose 1x to restore it. Stop and resume movement to refresh the movement component. Unchecking does not restore speed; re-enable and select 1x to restore.
+Select “Auto: on foot 3x / mounted 3.5x” in entry 13 and leave it checked. Mounting and dismounting automatically use each actor’s own baseline; the magitek armor appearance is supported. Unchecking stops monitoring and restores original values still owned by this feature on live actors. Stop and resume movement to refresh the game’s movement component.
 
-This is a one-shot change to the current map actor, with no freeze or global time scaling. Map changes, battles or restarting may reset it; rerun as needed. Mounted use is unsupported. Map transitions, interiors, mounts and battle transitions have not been live-tested. On 2026-10-27, the user confirmed faster overworld movement at 1.5x; 2x and 3x passed readback, and the user accepted 3x for publication. Baselines were walking 180, running 450 and jogging 230; overworld movement used jogging. Only those three speeds are changed, not animation or battle time scaling.
+Automatic mode follows the controlled map actor without compounding. It suspends application during battles or when free movement is unavailable. The 1x/1.5x/2x/3x one-shot options remain available: 1x restores the baseline; unchecking a one-shot option does not restore it. Global time, animation speed and battle speed are unchanged.
 
-The formal implementation also passed live readback for 3x → baseline (180/450/230) → 3x (540/1350/690).
+Live validation on standard CrossOver, 2026-10-27: magitek armor baselines 350/500/400 became 1225/1750/1400 at 3.5x. The user confirmed normal mounting/dismounting with no compounding. Stopping restored on-foot values to 180/450/230. Isolated tests also cover pause/resume, actor switching and disable restoration. Interiors, airships and battle transitions have not been live-tested; airships are unsupported.

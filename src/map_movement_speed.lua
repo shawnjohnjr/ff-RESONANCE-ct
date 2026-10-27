@@ -1,5 +1,5 @@
 -- Current controlled map pawn only; no global time dilation or periodic writes.
-local function mapMovementSpeed(s,b)
+local function mapMovementSpeed(s,b,allowMounted)
  local offsets={0x86C,0x870,0x874} -- walking, running, jogging
  checkCode(s.base+0x4E63971,{0xF3,0x0F,0x11,0x87,0x70,0x08,0,0})
  checkCode(s.base+0x4E639F1,{0xF3,0x0F,0x11,0x87,0x6C,0x08,0,0})
@@ -12,7 +12,9 @@ local function mapMovementSpeed(s,b)
   local pc=readPointer(lp+0x30);assert(b.live(pc),'Controller unavailable')
   local pawn=readPointer(pc+0x2E8);local identity=b.live(pawn)
   assert(identity and b.isa(pawn,'CPP_MapUnit_Playable'),'No controlled map character')
-  assert(not b.isa(pawn,'CPP_MapUnit_Chocobo') and not b.isa(pawn,'CPP_MapUnit_AirShip'),'Dismount before changing speed')
+  local mounted=b.isa(pawn,'CPP_MapUnit_Chocobo')
+  assert(not b.isa(pawn,'CPP_MapUnit_AirShip'),'Airship speed is unsupported')
+  assert(allowMounted or not mounted,'Dismount before changing speed')
   local level=readPointer(pawn+32);assert(b.live(level) and readPointer(level+0xC0)==world,'Map changed')
   assert(readBytes(pawn+0xA08,1)==1,'Wait for free map movement')
   battleDirectLinks(s,b).refresh()
@@ -23,7 +25,7 @@ local function mapMovementSpeed(s,b)
    end
   end
   assert(found,'Battle state unavailable')
-  return {pawn=pawn,identity=identity,world=world}
+  return {pawn=pawn,identity=identity,world=world,mounted=mounted}
  end
  local c=context()
  local cache=_G.FFRS_MAP_SPEED
@@ -43,8 +45,12 @@ local function mapMovementSpeed(s,b)
   end
   cache.actors[key]=record
  end
+ -- A game reset may restore all fields on an existing actor after dismounting.
+ local reset=true
+ for i,v in ipairs(values)do if v~=record.base[i] then reset=false end end
+ if reset then record.multiplier=1 end
  local function apply(multiplier)
-  assert(multiplier==1 or multiplier==1.5 or multiplier==2 or multiplier==3,'Unsupported multiplier')
+  assert(multiplier==1 or multiplier==1.5 or multiplier==2 or multiplier==3 or (allowMounted and multiplier==3.5),'Unsupported multiplier')
   local now=context();assert(now.pawn==c.pawn and now.identity==c.identity and now.world==c.world,'Character changed; reopen entry')
   local before={}
   for i,o in ipairs(offsets)do
@@ -70,5 +76,5 @@ local function mapMovementSpeed(s,b)
   if _G.FFRS_MAP_SPEED_PROBE and _G.FFRS_MAP_SPEED_PROBE.pawn==c.pawn then _G.FFRS_MAP_SPEED_PROBE=nil end
   return record.base[1]*multiplier,record.base[2]*multiplier,record.base[3]*multiplier
  end
- return {apply=apply,multiplier=record.multiplier}
+ return {apply=apply,multiplier=record.multiplier,mounted=c.mounted,pawn=c.pawn,identity=c.identity,record=record}
 end

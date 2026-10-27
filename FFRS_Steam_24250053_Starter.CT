@@ -8439,7 +8439,7 @@ if run and run.running then run.status='Cancelled';run.stop() end
     </CheatEntry>
     <CheatEntry>
       <ID>13</ID>
-      <Description>"13 地圖移速（1／1.5／2／3 倍，單次）"</Description>
+      <Description>"13 地圖移速（自動徒步 3 倍／騎乘 3.5 倍）"</Description>
       <VariableType>Auto Assembler Script</VariableType>
       <AssemblerScript>[ENABLE]
 {$lua}
@@ -8872,7 +8872,7 @@ local function checkCode(a,bytes)
 end
 
 -- Current controlled map pawn only; no global time dilation or periodic writes.
-local function mapMovementSpeed(s,b)
+local function mapMovementSpeed(s,b,allowMounted)
  local offsets={0x86C,0x870,0x874} -- walking, running, jogging
  checkCode(s.base+0x4E63971,{0xF3,0x0F,0x11,0x87,0x70,0x08,0,0})
  checkCode(s.base+0x4E639F1,{0xF3,0x0F,0x11,0x87,0x6C,0x08,0,0})
@@ -8885,7 +8885,9 @@ local function mapMovementSpeed(s,b)
   local pc=readPointer(lp+0x30);assert(b.live(pc),'Controller unavailable')
   local pawn=readPointer(pc+0x2E8);local identity=b.live(pawn)
   assert(identity and b.isa(pawn,'CPP_MapUnit_Playable'),'No controlled map character')
-  assert(not b.isa(pawn,'CPP_MapUnit_Chocobo') and not b.isa(pawn,'CPP_MapUnit_AirShip'),'Dismount before changing speed')
+  local mounted=b.isa(pawn,'CPP_MapUnit_Chocobo')
+  assert(not b.isa(pawn,'CPP_MapUnit_AirShip'),'Airship speed is unsupported')
+  assert(allowMounted or not mounted,'Dismount before changing speed')
   local level=readPointer(pawn+32);assert(b.live(level) and readPointer(level+0xC0)==world,'Map changed')
   assert(readBytes(pawn+0xA08,1)==1,'Wait for free map movement')
   battleDirectLinks(s,b).refresh()
@@ -8896,7 +8898,7 @@ local function mapMovementSpeed(s,b)
    end
   end
   assert(found,'Battle state unavailable')
-  return {pawn=pawn,identity=identity,world=world}
+  return {pawn=pawn,identity=identity,world=world,mounted=mounted}
  end
  local c=context()
  local cache=_G.FFRS_MAP_SPEED
@@ -8916,8 +8918,12 @@ local function mapMovementSpeed(s,b)
   end
   cache.actors[key]=record
  end
+ -- A game reset may restore all fields on an existing actor after dismounting.
+ local reset=true
+ for i,v in ipairs(values)do if v~=record.base[i] then reset=false end end
+ if reset then record.multiplier=1 end
  local function apply(multiplier)
-  assert(multiplier==1 or multiplier==1.5 or multiplier==2 or multiplier==3,'Unsupported multiplier')
+  assert(multiplier==1 or multiplier==1.5 or multiplier==2 or multiplier==3 or (allowMounted and multiplier==3.5),'Unsupported multiplier')
   local now=context();assert(now.pawn==c.pawn and now.identity==c.identity and now.world==c.world,'Character changed; reopen entry')
   local before={}
   for i,o in ipairs(offsets)do
@@ -8943,26 +8949,91 @@ local function mapMovementSpeed(s,b)
   if _G.FFRS_MAP_SPEED_PROBE and _G.FFRS_MAP_SPEED_PROBE.pawn==c.pawn then _G.FFRS_MAP_SPEED_PROBE=nil end
   return record.base[1]*multiplier,record.base[2]*multiplier,record.base[3]*multiplier
  end
- return {apply=apply,multiplier=record.multiplier}
+ return {apply=apply,multiplier=record.multiplier,mounted=c.mounted,pawn=c.pawn,identity=c.identity,record=record}
+end
+
+-- Restore only values still owned by this feature, never recycled objects.
+local function restoreMapSpeedRecord(s,b,record)
+ if getOpenedProcessID()~=s.pid or b.live(record.pawn)~=record.identity then return end
+ local offsets={0x86C,0x870,0x874}
+ for i,o in ipairs(offsets)do
+  local current=readFloat(record.pawn+o)
+  if current==record.base[i]*record.multiplier then
+   assert(writeFloat(record.pawn+o,record.base[i]),'Restore write failed')
+   assert(readFloat(record.pawn+o)==record.base[i],'Restore readback failed')
+  end
+ end
+ record.multiplier=1
+end
+local function startMapSpeedRuntime(s,b)
+ assert(not (_G.FFRS_MAP_SPEED_RUNTIME and _G.FFRS_MAP_SPEED_RUNTIME.running),'Map speed is already active')
+ local run={running=true,status='Waiting for map control',changes=0}
+ _G.FFRS_MAP_SPEED_RUNTIME=run
+ local timer=createTimer(nil,false);timer.Interval=250
+ local active
+ local function restoreActive()
+  if active then restoreMapSpeedRecord(s,b,active);active=nil end
+ end
+ function run.stop()
+  if not run.running then return end
+  run.running=false;timer.Enabled=false;timer.destroy()
+  local ok,err=pcall(restoreActive)
+  b.clear()
+  if not ok then run.error=tostring(err);run.status='Restore failed: '..run.error;error(err)end
+  run.status='Stopped; original speed restored for live owned values'
+ end
+ timer.OnTimer=function()
+  if not run.running then return end
+  local ok,err=pcall(function()
+   if getOpenedProcessID()~=s.pid then run.stop();return end
+   local available,speed=pcall(mapMovementSpeed,s,b,true)
+   if not available then restoreActive();run.status='Waiting: '..tostring(speed);return end
+   if active and (active.pawn~=speed.pawn or active.identity~=speed.identity)then restoreActive()end
+   active=speed.record
+   local target=speed.mounted and 3.5 or 3
+   if speed.multiplier~=target then
+    run.walk,run.run,run.jog=speed.apply(target);run.changes=run.changes+1
+   else
+    for i,o in ipairs({0x86C,0x870,0x874})do assert(readFloat(speed.pawn+o)==speed.record.base[i]*target,'Speed changed externally')end
+   end
+   run.mounted=speed.mounted;run.pawn=speed.pawn
+   run.status=(speed.mounted and 'Mounted 3.5x' or 'On foot 3x')
+  end)
+  if not ok then
+   run.error=tostring(err);pcall(run.stop);run.status='Stopped: '..run.error
+   print('FFRS map speed: '..run.status)
+  end
+ end
+ timer.Enabled=true
+ return run
 end
 
 
+local previous=_G.FFRS_MAP_SPEED_RUNTIME
+if previous and previous.running then previous.stop()end
 local s=connect(true);local b=battleObjects(s)
-local speed=mapMovementSpeed(s,b)
+local speed=mapMovementSpeed(s,b,true)
 local list=createStringlist()
-for _,label in ipairs({'1x — 恢復原速 / Restore original','1.5x','2x','3x'})do list.add(label)end
-local ok,index=pcall(showSelectionList,'地圖移速 / Map movement speed','目前 '..speed.multiplier..'x。只修改目前地圖角色；停止再移動即可刷新。',list,false)
+for _,label in ipairs({'自動：徒步 3x／騎乘 3.5x（取消恢復）','1x — 恢復原速 / Restore original','1.5x','2x','3x'})do list.add(label)end
+local ok,index=pcall(showSelectionList,'地圖移速 / Map movement speed','目前 '..speed.multiplier..'x。自動模式會跟隨上下騎乘；其他倍率為單次修改。',list,false)
 list.destroy()
 if not ok then b.clear();error(index)end
 if index==nil or index&lt;0 then b.clear();return end
+if index==0 then startMapSpeedRuntime(s,b);return end
 local multipliers={1,1.5,2,3}
-local applied,walk,run,jog=pcall(speed.apply,assert(multipliers[index+1],'Invalid selection'))
+local applied,walk,run,jog=pcall(speed.apply,assert(multipliers[index],'Invalid selection'))
 b.clear()
 if not applied then error(walk)end
-showMessage(string.format('地圖移速 %sx：走路 %g／跑步 %g／慢跑 %g。停止再移動即可刷新。取消勾選不還原；還原請重新執行並選 1x。',multipliers[index+1],walk,run,jog))
+showMessage(string.format('地圖移速 %sx：走路 %g／跑步 %g／慢跑 %g。停止再移動即可刷新。取消勾選不還原；還原請重新執行並選 1x。',multipliers[index],walk,run,jog))
 
 {$asm}
 [DISABLE]
+{$lua}
+if syntaxcheck then return end
+local run=_G.FFRS_MAP_SPEED_RUNTIME
+if run and run.running then run.stop()end
+
+{$asm}
 </AssemblerScript>
     </CheatEntry>
   </CheatEntries>
