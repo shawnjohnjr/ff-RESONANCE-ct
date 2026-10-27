@@ -102,6 +102,11 @@ TABLE_ENTRIES = (
         helper_sources=("game_thread_dispatch.lua", "battle_direct_links.lua", "battle_objects.lua", "memory_checks.lua"),
         disable_source="disable_fel_meteor.lua",
     ),
+    TableEntry(
+        13, "13 地圖移速（1／1.5／2／3 倍，單次）",
+        "edit_map_movement_speed.lua",
+        helper_sources=("battle_direct_links.lua", "battle_objects.lua", "memory_checks.lua", "map_movement_speed.lua"),
+    ),
 )
 
 

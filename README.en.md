@@ -20,6 +20,7 @@ For Steam **build 24250053**. Tested on macOS with standard CrossOver and Window
 | 10 | Acquire one missing vision or all 26; skip owned visions |
 | 11 | Fill the current acting character’s Limit gauge once; no automatic casting |
 | 12 | Unlock Fel Meteor for Dark Fina once; skip if already learned |
+| 13 | One-shot map walking/running/jogging speed: 1x, 1.5x, 2x, 3x |
 
 Entries are independent and disabled by default. Entries 01–06 run once, without freezing values; unchecking does not undo changes. Uncheck and recheck to run them again. Entries 07 and 08 run while checked and can be disabled separately. Their shared callback is removed when both are disabled.
 
@@ -326,3 +327,11 @@ This directly unlocks the Digital Deluxe bonus skill; it does not grant the tome
 Entry 04 now includes **Magitek Armor Key / 魔導裝甲之鑰 (29500)**. Selecting it grants one if missing and skips if already owned. Stay outside battle in a normal menu, then return the game to the foreground; unchecking cancels a pending grant. Ordinary item quantity editing still requires ownership, and other key items remain excluded.
 
 After acquiring a chocobo, use the key in the game’s Items menu to switch its appearance. Tested on standard CrossOver on 2026-10-27: quantity 0 → 1, other inventory and Gil unchanged; the user confirmed successful use and magitek armor riding appearance. DLC receipt and Steam ownership states were not modified. Save/reload persistence remains unverified.
+
+### Map movement speed
+
+Use entry 13 while on foot with free map control. Choose 1.5x, 2x or 3x relative to the recorded baseline, without compounding; choose 1x to restore it. Stop and resume movement to refresh the movement component. Unchecking does not restore speed; re-enable and select 1x to restore.
+
+This is a one-shot change to the current map actor, with no freeze or global time scaling. Map changes, battles or restarting may reset it; rerun as needed. Mounted use is unsupported. Map transitions, interiors, mounts and battle transitions have not been live-tested. On 2026-10-27, the user confirmed faster overworld movement at 1.5x; 2x and 3x passed readback, and the user accepted 3x for publication. Baselines were walking 180, running 450 and jogging 230; overworld movement used jogging. Only those three speeds are changed, not animation or battle time scaling.
+
+The formal implementation also passed live readback for 3x → baseline (180/450/230) → 3x (540/1350/690).
