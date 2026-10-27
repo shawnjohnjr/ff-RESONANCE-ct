@@ -9036,6 +9036,836 @@ if run and run.running then run.stop()end
 {$asm}
 </AssemblerScript>
     </CheatEntry>
+    <CheatEntry>
+      <ID>14</ID>
+      <Description>"14 角色永久能力加成（選角色／數值／還原）"</Description>
+      <VariableType>Auto Assembler Script</VariableType>
+      <AssemblerScript>[ENABLE]
+{$lua}
+if syntaxcheck then return end
+-- FFRS retail Steam build 24250053. Read-only lookup, no injected game calls.
+-- SDK reference: PolarWizard/final-fantasy-resonance-fix (MIT).
+local function connect(battleOnly)
+ local pid=assert(getProcessIDFromProcessName('FFRS-Win64-Shipping.exe'),'Resonance is not running')
+ if getOpenedProcessID()~=pid then openProcess(pid) end
+ local base=assert(getAddressSafe('FFRS-Win64-Shipping.exe'),'Game module unavailable')
+ local pe=base+readInteger(base+0x3c)
+ assert(readInteger(pe+8)==0x6A586B2F and readInteger(pe+0x50)==503013376,'Unsupported game build; stop and revalidate')
+ local pool=base+0x9CA1280
+ local names={}
+ local blocks=readInteger(pool+8)
+ assert(blocks and blocks&gt;=0 and blocks&lt;8192,'Invalid name pool')
+ local function name(id)
+  if not id or id&lt;0 then return '?' end
+  if names[id] then return names[id] end
+  local block=math.floor(id/65536);local off=(id%65536)*2
+  if block&gt;blocks then blocks=readInteger(pool+8) or -1 end
+  if block&gt;blocks or blocks&gt;=8192 then return '?' end
+  local p=readPointer(pool+0x10+block*8);if not p or p&lt;65536 then return '?' end
+  local h=readSmallInteger(p+off);if not h then return '?' end
+  if h&lt;0 then h=h+65536 end
+  local len=math.floor(h/64)
+  if len&gt;1023 then return '?' end
+  local s
+  if h%2==1 then s=readString(p+off+2,len*2,true)
+  else local b=readBytes(p+off+2,len,true);s=b and string.char(table.unpack(b)) end
+  names[id]=s or '?';return names[id]
+ end
+ assert(name(0)=='None','Name pool does not match this game')
+ local function oname(o) return o and o&gt;65536 and name(readInteger(o+0x18)) or '?' end
+ local classes={}
+ local function cname(o)
+  local c=o and readPointer(o+0x10)
+  if not c or c&lt;65536 then return '?' end
+  if not classes[c] then classes[c]=oname(c) end
+  return classes[c]
+ end
+ local world=readPointer(base+0x9AA0540)
+ assert(world and world&gt;65536 and cname(world)=='World','Wait for a loaded world')
+ local gi=readPointer(world+0x228)
+ assert(gi and gi&gt;65536,'Wait for the game instance')
+ local g=base+0x9D84DD0;local count=readInteger(g+0x14);local chunks=readPointer(g)
+ assert(count and count&gt;0 and count&lt;2000000 and chunks and chunks&gt;65536,'Invalid object array')
+ local chunkCount=readInteger(g+0x1c)
+ assert(chunkCount and chunkCount&gt;0 and chunkCount&lt;=math.ceil(2000000/65536),'Invalid object chunks')
+ local function at(i)
+  local currentCount=battleOnly and readInteger(g+0x14) or count
+  if not i or not currentCount or currentCount&gt;2000000 or i&lt;0 or i&gt;=currentCount then return nil end
+  local ch=readPointer(chunks+math.floor(i/65536)*8)
+  return ch and ch&gt;65536 and readPointer(ch+(i%65536)*24) or nil
+ end
+ -- Battle automation does not use inventory tables or save-data writes.
+ if battleOnly then return {at=at,oname=oname,cname=cname,name=name,pid=pid,base=base} end
+ local function ismanager(o)
+  if not o or o&lt;65536 then return false end
+  local flags=readInteger(o+8)
+  return flags and (flags &amp; 0x10)==0 and cname(o)=='CPP_MuchaSaveDataManager' and readPointer(o+0x20)==gi
+ end
+ local cached=_G.FFRS_CT_SESSION
+ local manager,index
+ local tables={}
+ if cached and cached.pid==pid and cached.base==base and at(cached.index)==cached.manager and ismanager(cached.manager) and cached.tables then
+  manager,index=cached.manager,cached.index
+  tables=cached.tables
+ else
+  for i=0,count-1 do
+   local o=at(i)
+   if o and o&gt;65536 and cname(o)=='DataTable' then
+    local row=readPointer(o+0x28)
+    local rn=oname(row)
+    if rn=='CONSUMABLES_ITEM_DATA' or rn=='EQUIPMENT_ITEM_DATA' or rn=='UNIT_PARAMETER' or rn=='UNIT_LEVEL_PARAMETER_LIST' then
+     tables[#tables+1]={object=o,index=i,row=rn,name=oname(o)}
+    end
+   end
+   if ismanager(o) then assert(not manager,'Multiple active save managers; stop');manager,index=o,i end
+  end
+ end
+ assert(manager,'Active save manager not found; load a save first')
+ local save=readPointer(manager+0x60)
+ assert(save and save&gt;65536 and cname(save)=='CPP_MuchaGameSaveData','Active save data unavailable')
+ local flags=readInteger(save+8);assert(flags and (flags &amp; 0x10)==0,'Default object is not a save')
+ local gil=readInteger(save+0x28)
+ assert(gil and gil&gt;=0 and gil&lt;=2147483647,'Invalid money value')
+ local inv=readPointer(save+0xA8);local n=readInteger(save+0xB0);local cap=readInteger(save+0xB4)
+ assert(n and cap and n&gt;=0 and n&lt;=cap and cap&lt;=100000,'Invalid inventory array')
+ assert(n==0 or (inv and inv&gt;65536),'Invalid inventory pointer')
+ _G.FFRS_CT_SESSION={pid=pid,base=base,manager=manager,index=index,tables=tables}
+ return {at=at,oname=oname,cname=cname,name=name,tables=tables,pid=pid,base=base,manager=manager,save=save,gil=gil,inventory=inv,count=n,capacity=cap}
+end
+
+local function arrayAt(a,max)
+ local p=readPointer(a);local n=readInteger(a+8);local cap=readInteger(a+12)
+ assert(n and cap and n&gt;=0 and n&lt;=cap and cap&lt;=max,'Invalid array')
+ assert(n==0 or (p and p&gt;65536),'Invalid array pointer')
+ return p,n
+end
+local function partyPlan(s)
+ local party,n=arrayAt(s.save+0x90,8);assert(n&gt;0,'No party members')
+ local units,un=arrayAt(s.save+0x60,64)
+ local byId={}
+ for i=0,un-1 do local a=units+i*0xA0;local id=readInteger(a);assert(id and not byId[id],'Invalid unit ID');byId[id]=a end
+ local definitions={}
+ for _,r in ipairs(tableRows(s,findTable(s,'UNIT_PARAMETER'),'UNIT_PARAMETER')) do definitions[readInteger(r.p+8)]={curve=readInteger(r.p+0x3C),name=r.key} end
+ local curves={}
+ for _,r in ipairs(tableRows(s,findTable(s,'UNIT_LEVEL_PARAMETER_LIST'),'UNIT_LEVEL_PARAMETER_LIST')) do curves[readInteger(r.p+8)]=readPointer(r.p+0x10) end
+ local out,seen={},{}
+ for i=0,n-1 do
+  local id=readInteger(party+i*4)
+  assert(id and id&gt;=1001 and id&lt;=1008 and not seen[id],'Unexpected party member');seen[id]=true
+  local a=assert(byId[id],'Party member missing from save');local def=assert(definitions[id],'Missing unit definition')
+  local levels={}
+  for _,r in ipairs(tableRows(s,assert(curves[def.curve],'Missing curve'),'UNIT_LEVEL_PARAMETER')) do
+   local lv=readInteger(r.p+8);local xp=readInteger(r.p+12)
+   if lv and lv&gt;=1 and lv&lt;=99 then assert(not levels[lv] and xp and xp&gt;=0,'Invalid level curve');levels[lv]=xp end
+  end
+  local sum=0;for lv=1,99 do sum=sum+assert(levels[lv],'Incomplete level curve') end
+  assert(sum&gt;0 and sum&lt;=2147483647,'Invalid level-99 EXP')
+  local old=readInteger(a+4);assert(old and old&gt;=0,'Invalid current EXP')
+  out[#out+1]={id=id,address=a,experience=old,target=sum,name=def.name,partyIndex=i}
+ end
+ return out,party,n,units
+end
+
+local function checkCode(a,bytes)
+ local actual=readBytes(a,#bytes,true);assert(actual,'Game function unavailable')
+ for i=1,#bytes do assert(actual[i]==bytes[i],'Game function mismatch; stop') end
+end
+
+--[[
+Reference: https://github.com/Darjjj/resonance-game-boosters
+MIT License
+
+Copyright (c) 2026 FxDarj
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+]]
+
+-- Run reflected calls on the game's window thread, following the reference mod.
+-- No executable bytes or DLL files are replaced. Retain callback memory until
+-- process exit: UnhookWindowsHookEx does not guarantee an in-flight return ended.
+local function createGameThread(s)
+ local p=assert(allocateMemory(4096,nil,0x04),'Cannot allocate read/write game-thread mailbox')
+ local code=assert(allocateMemory(4096,nil,0x40),'Cannot allocate separate callback page')
+ local function api(n) return assert(getAddressSafe(n),'Missing Windows API: '..n) end
+ writeBytes(p,table.unpack({0,0,0,0,0,0,0,0}))
+ writeString(p+0x100,'UnrealWindow',true)
+ local hwnd=executeCodeEx(0,3000,api('user32.FindWindowW'),p+0x100,0)
+ assert(hwnd and hwnd~=0,'Game window unavailable')
+ local tid=executeCodeEx(0,3000,api('user32.GetWindowThreadProcessId'),hwnd,p+0x180)
+ assert(readInteger(p+0x180)==s.pid and tid~=0,'Game window belongs to another process')
+ local assembly=string.format([[
+define(mailbox,%X)
+define(callback,%X)
+define(clock,%X)
+define(foreground,%X)
+define(nextHook,%X)
+define(queryMemory,%X)
+label(forward)
+label(reject)
+label(checkGuard)
+label(guardByte)
+label(guardDword)
+label(guardNext)
+label(invoke)
+callback:
+ push rbx
+ push rsi
+ push rdi
+ push r12
+ sub rsp,98
+ mov [rsp+20],ecx
+ mov [rsp+28],rdx
+ mov [rsp+30],r8
+ test ecx,ecx
+ js forward
+ cmp edx,1
+ jne forward
+ mov rbx,mailbox
+ mov rcx,rbx
+ lea rdx,[rsp+40]
+ mov r8d,30
+ mov rax,queryMemory
+ call rax
+ cmp rax,30
+ jne forward
+ cmp dword ptr [rsp+60],1000
+ jne forward
+ mov eax,[rsp+64]
+ test eax,101
+ jnz forward
+ test eax,EE
+ jz forward
+ mov rax,[rsp+40]
+ add rax,[rsp+58]
+ lea rcx,[rbx+1000]
+ cmp rax,rcx
+ jb forward
+ cmp dword ptr [rbx],1
+ jne forward
+ mov eax,1
+ mov ecx,2
+ lock cmpxchg [rbx+4],ecx
+ jne forward
+ mov dword ptr [rbx+48],1
+ mov rax,clock
+ call rax
+ cmp rax,[rbx+8]
+ jae reject
+ mov dword ptr [rbx+48],2
+ mov rax,foreground
+ call rax
+ cmp rax,[rbx+38]
+ jne reject
+ mov dword ptr [rbx+48],3
+ mov edi,[rbx+30]
+ lea rsi,[rbx+400]
+checkGuard:
+ mov [rbx+4C],edi
+ test edi,edi
+ jz invoke
+ mov rcx,[rsi]
+ lea rdx,[rsp+40]
+ mov r8d,30
+ mov rax,queryMemory
+ call rax
+ cmp rax,30
+ jne reject
+ cmp dword ptr [rsp+60],1000
+ jne reject
+ mov eax,[rsp+64]
+ test eax,101
+ jnz reject
+ test eax,EE
+ jz reject
+ mov rax,[rsp+40]
+ add rax,[rsp+58]
+ mov rcx,[rsi]
+ mov edx,[rsi+10]
+ add rcx,rdx
+ cmp rax,rcx
+ jb reject
+ mov rax,[rsi]
+ mov rdx,[rsi+8]
+ cmp dword ptr [rsi+10],1
+ je guardByte
+ cmp dword ptr [rsi+10],4
+ je guardDword
+ cmp [rax],rdx
+ jne reject
+ jmp guardNext
+guardByte:
+ cmp [rax],dl
+ jne reject
+ jmp guardNext
+guardDword:
+ cmp [rax],edx
+ jne reject
+guardNext:
+ add rsi,18
+ dec edi
+ jmp checkGuard
+invoke:
+ mov dword ptr [rbx+48],0
+ mov rcx,[rbx+18]
+ mov rdx,[rbx+20]
+ mov r8,[rbx+28]
+ mov rax,[rbx+10]
+ call rax
+ mov dword ptr [rbx+4],3
+ jmp forward
+reject:
+ mov dword ptr [rbx+4],4
+forward:
+ xor ecx,ecx
+ mov edx,[rsp+20]
+ mov r8,[rsp+28]
+ mov r9,[rsp+30]
+ mov rax,nextHook
+ call rax
+ add rsp,98
+ pop r12
+ pop rdi
+ pop rsi
+ pop rbx
+ ret
+]],p,code,api('kernel32.GetTickCount64'),api('user32.GetForegroundWindow'),api('user32.CallNextHookEx'),api('kernel32.VirtualQuery'))
+ assert(autoAssemble(assembly),'Cannot assemble window-thread callback')
+ writeQword(p+0x38,hwnd)
+ local hook=executeCodeEx(0,3000,api('user32.SetWindowsHookExW'),3,code,0,tid)
+ assert(hook and hook~=0,'Cannot install game window callback')
+ writeInteger(p,1)
+ local stopped=false
+ local t={buffer=p+0x200,base=p,code=code,hwnd=hwnd,tid=tid}
+ function t.stop()
+  if stopped then return end
+  stopped=true
+  if getOpenedProcessID()~=s.pid or readSmallInteger(s.base)~=0x5A4D then return end
+  writeInteger(p,0)
+  -- An already executing command can finish; no new one will begin.
+  executeCodeEx(0,3000,api('user32.UnhookWindowsHookEx'),hook)
+ end
+ function t.call(process,target,fn,guards,nativeR8)
+  assert(not stopped,'Game-thread dispatcher stopped')
+  assert(#guards&lt;=100,'Too many call guards')
+  assert(getOpenedProcessID()==s.pid and readInteger(p)==1,'Mailbox unavailable; stop automation')
+  local state=readInteger(p+4)
+  assert(state~=1 and state~=2,'Previous command still pending; stop automation')
+  writeQword(p+0x10,process);writeQword(p+0x18,target)
+  writeQword(p+0x20,fn);writeQword(p+0x28,nativeR8 or t.buffer)
+  writeInteger(p+0x30,#guards)
+  for i,g in ipairs(guards) do
+   local a=p+0x400+(i-1)*24
+   writeQword(a,g[1]);writeQword(a+8,g[2]);writeInteger(a+16,g[3] or 8)
+  end
+  -- CE and the game use the same Windows uptime clock in this Wine bottle.
+  writeQword(p+8,getTickCount()+1000)
+  writeInteger(p+4,1)
+  executeCodeEx(0,3000,api('user32.PostThreadMessageW'),tid,0,0,0)
+  local start=getTickCount()
+  repeat
+   state=readInteger(p+4)
+   if state==3 then return true end
+   if state==4 then return false end
+   sleep(5)
+  until getTickCount()-start&gt;1200
+  t.stop();error('Game window did not process the command; automation stopped')
+ end
+ return t
+end
+
+-- Validated links for Steam build 24250053; no process-wide pointer scan.
+local function battleDirectLinks(s,b)
+ local cached={}
+ local function subsystem(owner,offset,wanted)
+  if not b.live(owner) then return end
+  local old=cached[wanted]
+  if old and old.owner==owner and b.live(old.object)==old.identity and readPointer(old.object+0x20)==owner then return old.object end
+  cached[wanted]=nil
+  local m=owner+offset;local p=readPointer(m)
+  local n,cap=readInteger(m+8),readInteger(m+12)
+  local bits,count=readPointer(m+0x20),readInteger(m+0x28)
+  if not p or p&lt;65536 or not n or not cap or n&lt;0 or n&gt;cap or cap&gt;256 or not count or count&lt;n or count&gt;256 then return end
+  if not bits or bits==0 then bits=m+0x10 end
+  for i=0,n-1 do
+   local flags=readInteger(bits+math.floor(i/32)*4)
+   if not flags then return end
+   if (flags &amp; (1&lt;&lt;(i%32)))~=0 then
+    local key=readPointer(p+i*24);local value=readPointer(p+i*24+8)
+    if b.live(key,true) and s.oname(key)==wanted and b.live(value) and b.isa(value,key) and readPointer(value+0x20)==owner then
+     cached[wanted]={owner=owner,object=value,identity=b.live(value)};return value
+    end
+   end
+  end
+ end
+ local function accept(o,class,cache)
+  local identity=b.live(o)
+  if not identity or not b.isa(o,class) then return end
+  cache[o]=identity;b.reflectClass(readPointer(o+16));return o
+ end
+ local function weak(address)
+  local index,serial=readInteger(address),readInteger(address+4)
+  if not index or index&lt;=0 or not serial or serial&lt;=0 then return end
+  local o=s.at(index)
+  if b.live(o)==tostring(index)..':'..tostring(serial) then return o end
+ end
+ local d={}
+ local lastRefresh,lastLinked=0,false
+ function d.clear() cached={};lastRefresh=0;lastLinked=false end
+ function d.refresh()
+  local now=getTickCount()
+  if now-lastRefresh&lt;250 then return lastLinked end
+  lastRefresh=now;lastLinked=false
+  local world=readPointer(s.base+0x9AA0540)
+  if not b.live(world) then return false end
+  local gi=readPointer(world+0x228)
+  local widgets=subsystem(gi,0x108,'CPP_GameWidgetManagerSubsystem')
+  local root=widgets and accept(readPointer(widgets+0x80),'WBP_OverAllLayout_C',b.roots)
+  local ui=subsystem(world,0x930,'CPP_UI_BattleSubsystem')
+  if not ui then return false end
+  b.interfaces[ui]=b.live(ui)
+  accept(readPointer(ui+0x48),'WBP_Btl_ResultLayout_C',b.results)
+  local widget=weak(ui+0x40)
+  local view
+  if widget and b.isa(widget,'WBP_BattleLayout_C') then
+   local commands=readPointer(widget+0x5A0)
+   if b.live(commands) and b.isa(commands,'WBP_BtlCmdLayout_C') then
+    view=accept(readPointer(commands+0x5A8),'CPP_VM_BtlCmd',b.views)
+   end
+  end
+  -- A missing/changed link leaves the original discovery sweep available.
+  lastLinked=root~=nil and (readBytes(ui+0x80,1)==0 or view~=nil)
+  return lastLinked
+ end
+ return d
+end
+
+-- Reflection and state validation adapted from Darjjj/resonance-game-boosters (MIT).
+local function battleObjects(s)
+ local b={functions={},interfaces={},views={},results={},roots={},cursor=0,seen=0}
+ local spec={
+  GetBattleUnitByUniqueId={'CPP_BFL_Battle',true},
+  GetUnitParameter={'CPP_BtlUnit',false},GetRelation={'CPP_UnitParameter',false},
+  GetUnitAI={'CPP_BtlUnit',false},GetFightSkillId={'CPP_BtlUnitAI',false},
+  CancelCommand={'CPP_VM_BtlCmd',false,true,0},
+  CanActivateAction={'CPP_VM_BtlCmd',false},DecideActionKey={'CPP_VM_BtlCmd',false},
+  GetDefaultSkillTargetUnitUniqueId={'CPP_BFL_Battle',true},
+  DecideTarget={'CPP_VM_BtlCmd',false},IsEnableCommand={'CPP_BFL_Battle',true},
+  IsGamePaused={'GameplayStatics',true},IsPlayingEvent={'CPP_BFL_TalkEvent',true},
+  IsPlaying={'CPP_BFL_Movie',true},
+  InputDecide={'WBP_Btl_ResultLayout_C',false,false,1},
+  IsInViewport={'Widget',false},
+ }
+ local registry=s.base+0x9D84DD0
+ local inheritance={}
+ local reflected={}
+ local scanChunks={}
+ local kinds={}
+ local lastPrune=0
+ local kindPruneCursor,inheritancePruneCursor
+ local priorityCursor=nil
+ b.discovery={mode='background',inspected=0,elapsedMs=0,boosts=0,pruned=0}
+ -- Store identities as well as addresses: Unreal can reuse object/class slots.
+ function b.prune(limit)
+  limit=limit or math.huge
+  local removed=0
+  for _,cache in ipairs({b.interfaces,b.views,b.results,b.roots}) do
+   for o,identity in pairs(cache) do
+    if b.live(o)~=identity then cache[o]=nil;removed=removed+1 end
+   end
+  end
+  local function pruneClasses(cache,cursor)
+   local key=cursor or next(cache)
+   local visited=0
+   while key and visited&lt;limit do
+    local entry=cache[key];local following=next(cache,key)
+    if b.live(key,true)~=entry.identity then cache[key]=nil;removed=removed+1 end
+    key=following;visited=visited+1
+   end
+   return key
+  end
+  kindPruneCursor=pruneClasses(kinds,kindPruneCursor)
+  inheritancePruneCursor=pruneClasses(inheritance,inheritancePruneCursor)
+  if b.activeView and b.live(b.activeView)~=b.activeViewIdentity then
+   b.activeView=nil;b.activeViewIdentity=nil
+  end
+  for name,fn in pairs(b.functions) do
+   if b.live(fn.object)~=fn.identity then b.functions[name]=nil;if fn.owner then reflected[fn.owner]=nil end;removed=removed+1 end
+  end
+  b.discovery.pruned=b.discovery.pruned+removed
+ end
+ local clearDirect
+ function b.clear()
+  if clearDirect then clearDirect() end
+  b.functions={};b.interfaces={};b.views={};b.results={};b.roots={}
+  b.activeView=nil;b.activeViewIdentity=nil
+  inheritance={};scanChunks={};kinds={}
+  kindPruneCursor=nil;inheritancePruneCursor=nil;priorityCursor=nil
+ end
+ local function slot(index)
+  local count=readInteger(registry+0x14)
+  if not index or index&lt;0 or not count or index&gt;=count or count&gt;2000000 then return end
+  local chunks=readPointer(registry);if not chunks then return end
+  local chunk=readPointer(chunks+math.floor(index/65536)*8)
+  if chunk and chunk&gt;65536 then return chunk+(index%65536)*24 end
+ end
+ function b.live(o,defaults,guards)
+  if not o or o&lt;65536 then return end
+  local flags=readInteger(o+8);local index=readInteger(o+12)
+  if not flags or (flags &amp; (defaults and 0x18000 or 0x18010))~=0 then return end
+  local a=slot(index)
+  if not a or readPointer(a)~=o then return end
+  local serial=readInteger(a+16);if not serial then return end
+  if guards then
+   guards[#guards+1]={a,o};guards[#guards+1]={a+16,serial,4}
+   guards[#guards+1]={o+8,flags,4}
+  end
+  return tostring(index)..':'..tostring(serial)
+ end
+ function b.isa(o,class)
+  local c=readPointer(o+16)
+  if not c then return false end
+  local identity=b.live(c,true);if not identity then return false end
+  local cached=inheritance[c]
+  if not cached or cached.identity~=identity then
+   cached={identity=identity,answers={}};inheritance[c]=cached
+  end
+  if cached.answers[class]~=nil then return cached.answers[class] end
+  for _=1,32 do
+   if not c or c&lt;65536 then return false end
+   if type(class)=='number' and c==class or type(class)=='string' and s.oname(c)==class then cached.answers[class]=true;return true end
+   c=readPointer(c+0x40)
+  end
+  cached.answers[class]=false;return false
+ end
+ function b.registerFunction(o)
+   local n=s.oname(o);local wanted=spec[n]
+   if wanted and b.live(o,false) then
+    local owner=readPointer(o+32);local flags=readInteger(o+0xB0)
+    local native=wanted[3]~=false
+    if s.oname(owner)==wanted[1] and flags and ((flags &amp; 0x400)~=0)==native and (native or (flags &amp; 0x800)~=0) and ((flags &amp; 0x2000)~=0)==wanted[2] then
+     b.functions[n]={object=o,owner=owner,static=wanted[2],native=native,paramSize=wanted[4],identity=b.live(o),defaults=readPointer(owner+0x110)}
+    end
+   end
+
+ end
+ function b.reflectClass(c)
+  for _=1,32 do
+   local identity=b.live(c,true)
+   if not identity or reflected[c]==identity then return end
+   local owner=s.oname(c);local wanted=false
+   for _,entry in pairs(spec) do if entry[1]==owner then wanted=true;break end end
+   if wanted then
+    reflected[c]=identity
+    local f=readPointer(c+0x48);local visited={}
+    for _=1,1024 do
+     if not b.live(f) or visited[f] then break end
+     visited[f]=true
+     if readPointer(f+0x20)==c and s.oname(readPointer(f+16))=='Function' then b.registerFunction(f) end
+     f=readPointer(f+0x28)
+    end
+   end
+   c=readPointer(c+0x40)
+  end
+ end
+ local direct=battleDirectLinks and battleDirectLinks(s,b)
+ clearDirect=function() reflected={};if direct then direct.clear() end end
+ local wantedClasses={}
+ for _,entry in pairs(spec) do wantedClasses[entry[1]]=true end
+ local function inspect(i,classesOnly)
+  local chunkIndex=math.floor(i/65536)
+  local chunk=scanChunks[chunkIndex]
+  if not chunk then
+   local chunks=readPointer(registry)
+   chunk=chunks and readPointer(chunks+chunkIndex*8);scanChunks[chunkIndex]=chunk
+  end
+  local a=chunk and chunk+(i%65536)*24;local o=a and readPointer(a)
+  if not o or o&lt;65536 then return end
+  local klass=readPointer(o+16);if not klass or klass&lt;65536 then return end
+  if classesOnly then
+   if s.oname(klass)=='Class' and wantedClasses[s.oname(o)] then b.reflectClass(o) end
+   return
+  end
+  local cached=kinds[klass]
+  local cn=cached and cached.value
+  if not cn then
+   local identity=b.live(klass,true);if not identity then return end
+   cn=s.oname(klass)
+   if cn~='Function' and cn~='Class' then
+    cn=b.isa(o,'CPP_UI_BattleSubsystem') and 'UI' or b.isa(o,'CPP_VM_BtlCmd') and 'View' or b.isa(o,'WBP_Btl_ResultLayout_C') and 'Result' or b.isa(o,'WBP_OverAllLayout_C') and 'Root' or 'Other'
+   end
+   kinds[klass]={identity=identity,value=cn}
+  end
+  if cn=='Function' then b.registerFunction(o)
+  elseif cn=='Class' then b.reflectClass(o)
+  elseif cn=='UI' and b.live(o,false) then b.interfaces[o]=b.live(o)
+  elseif cn=='View' and b.live(o,false) then b.views[o]=b.live(o)
+  elseif cn=='Result' and b.live(o,false) then b.results[o]=b.live(o)
+  elseif cn=='Root' and b.live(o,false) then b.roots[o]=b.live(o) end
+ end
+ function b.scan(budget,modes)
+  local n=assert(readInteger(registry+0x14));assert(n&gt;=0 and n&lt;2000000,'Invalid object count')
+  local start=getTickCount()
+  local linked=direct and direct.refresh()
+  if start-lastPrune&gt;=2000 then b.prune(8);lastPrune=start end
+  scanChunks={} -- Chunk pointers are reused only within this slice.
+  b.seen=math.min(b.seen,n)
+  local mode='background'
+  if linked and b.ready('attack') and (b.ready('results') or not next(b.results)) then
+   b.discovery.mode='direct';b.discovery.inspected=0;b.discovery.elapsedMs=getTickCount()-start;return
+  end
+  if modes and modes.attack then
+   local _,reason=b.context()
+   if reason=='missing-command-view' then budget=math.max(budget,4096);mode='command-view' end
+  end
+  if mode=='background' and b.seen&lt;n then budget=math.max(budget,2048);mode='initial' end
+  if mode~='background' then
+   if b.discovery.mode~=mode or not priorityCursor or priorityCursor&gt;=n then priorityCursor=n-1 end
+  else priorityCursor=nil end
+  if mode~='background' then b.discovery.boosts=b.discovery.boosts+1 end
+  local processed=0
+  -- Visit reused slots too: registry size need not grow between battles.
+  while processed&lt;budget and n&gt;0 do
+   if not linked and mode~='background' and processed%2==0 then
+    -- UI objects often reuse high registry slots; search backwards as well.
+    -- Alternate with the full sweep so low reused slots cannot starve.
+    if priorityCursor&lt;0 then priorityCursor=n-1 end
+    inspect(priorityCursor);priorityCursor=priorityCursor-1
+   elseif b.seen&lt;n then inspect(b.seen,linked);b.seen=b.seen+1
+   else
+    if b.cursor&gt;=n then b.cursor=0 end
+    inspect(b.cursor);b.cursor=b.cursor+1
+   end
+   processed=processed+1
+   -- Bound each burst so CE keeps servicing its UI and the stop switch.
+   if processed%32==0 and getTickCount()-start&gt;=20 then break end
+  end
+  b.discovery.mode=mode;b.discovery.inspected=processed
+  b.discovery.elapsedMs=getTickCount()-start
+ end
+ function b.ready(mode)
+  local resultNames={InputDecide=true,IsInViewport=true,IsGamePaused=true,IsPlayingEvent=true,IsPlaying=true}
+  for n in pairs(spec) do
+   local needed=mode=='results' and resultNames[n] or mode~='results' and n~='InputDecide' and n~='IsInViewport'
+   if needed and not b.functions[n] then return false,n end
+  end
+  return true
+ end
+ local function add(g,a,v,size) g[#g+1]={a,v,size} end
+ function b.context()
+  local world=readPointer(s.base+0x9AA0540);local g={}
+  if not b.live(world,false,g) then return end
+  add(g,s.base+0x9AA0540,world)
+  local ui
+  for o,identity in pairs(b.interfaces) do
+   if b.live(o)~=identity or not b.isa(o,'CPP_UI_BattleSubsystem') then b.interfaces[o]=nil
+   elseif readPointer(o+32)==world and readBytes(o+0x80,1)==1 then
+    if ui then return end;ui=o
+   end
+  end
+  if not ui or not b.live(ui,false,g) then return end
+  local phase=readBytes(ui+0x50,1)
+  if not phase or phase&gt;2 then return end
+  add(g,ui+32,world);add(g,ui+0x80,1,1);add(g,ui+0x50,phase,1)
+  local manager=readPointer(ui+0x70)
+  local mid=b.live(manager,false,g)
+  if not mid or readPointer(manager+32)~=ui then return end
+  local typ=readBytes(manager+0x30,1);local state=readBytes(manager+0x31,1)
+  if not typ or typ&gt;2 or not state or state&gt;1 then return end
+  local asset=readPointer(manager+0x28)
+  local index=readInteger(manager+0x58);local count=readInteger(manager+0x68)
+  if not index or not count or count&lt;0 or count&gt;16 then return end
+  add(g,ui+0x70,manager);add(g,manager+32,ui)
+  add(g,manager+0x30,typ,1);add(g,manager+0x31,state,1);add(g,manager+0x28,asset)
+  local unit
+  if typ&lt;2 then
+   if index&lt;0 or index&gt;=count then return end
+   local list=readPointer(manager+0x60);if not list or list&lt;65536 then return end
+   unit=readInteger(list+index*4)
+   add(g,manager+0x58,index,4);add(g,manager+0x68,count,4);add(g,manager+0x60,list)
+   add(g,list+index*4,unit,4)
+  else index=0;unit=readInteger(manager+0x70);add(g,manager+0x70,unit,4) end
+  if not unit or unit&lt;0 then return end
+  local view,vid,visible
+  for o,identity in pairs(b.views) do
+   if b.live(o)~=identity or not b.isa(o,'CPP_VM_BtlCmd') then b.views[o]=nil
+   elseif readPointer(o+0x68)==asset then
+    local v=readBytes(o+0x199,1)
+    if v and v&lt;=1 and (state==0 and v==1 or state==1 and o==b.activeView and b.live(o)==b.activeViewIdentity) then
+     if view then return end;view=o;visible=v
+    end
+   end
+  end
+  if not view then return nil,'missing-command-view' end
+  vid=b.live(view,false,g)
+  add(g,view+0x68,asset);add(g,view+0x199,visible,1)
+  if state==0 then b.activeView=view;b.activeViewIdentity=vid end
+  return {world=world,unit=unit,state=state,commandType=typ,phase=phase,view=view,guards=g,
+   key=world..'/'..mid..'/'..vid..'/'..unit..'/'..(index+typ*0x1000000)}
+ end
+ return b
+end
+
+-- SaveDataUnit baseParameterList stores accumulated story bonuses, not final stats.
+local BASE_STATS={
+ {id=1,label='HP',max=9999},{id=2,label='MP',max=9999},
+ {id=5,label='力量 / Strength',max=9999},{id=6,label='體力 / Vitality',max=9999},
+ {id=7,label='魔力 / Magic',max=9999},{id=8,label='精神 / Spirit',max=9999},
+ {id=9,label='速度 / Speed',max=9999},{id=11,label='AP',max=9999},
+}
+local CHARACTER_NAMES={[1001]='雷因 / Rain',[1002]='拉斯韋爾 / Lasswell',[1003]='菲娜 / Fina',
+ [1004]='莉德 / Lid',[1005]='尼科爾 / Nichol',[1006]='魔人菲娜 / Archwitch Fina',
+ [1007]='傑科 / Jake',[1008]='櫻 / Sakura'}
+local function baseStatSnapshot(s)
+ local units,n=arrayAt(s.save+0x60,8);local out={pointer=units,count=n,units={},byId={}}
+ for i=0,n-1 do
+  local a=units+i*0xA0;local id=readInteger(a)
+  assert(CHARACTER_NAMES[id] and not out.byId[id],'Unexpected character list')
+  local p,count=arrayAt(a+0x10,20)
+  assert(count==20,'Base bonus array not initialized; stop')
+  local u={id=id,address=a,pointer=p,values={},xp=readInteger(a+4),join=readBytes(a+0x80,1)}
+  assert(u.xp and u.xp&gt;=0 and u.join and u.join&lt;=4,'Invalid character state')
+  for j=0,19 do local v=readInteger(p+j*4);assert(v and v&gt;=0 and v&lt;=2147483647,'Invalid bonus');u.values[j]=v end
+  out.units[#out.units+1]=u;out.byId[id]=u
+ end
+ return out
+end
+local function baseStatPlan(snapshot,id,statId,target)
+ local u=assert(snapshot.byId[id],'Character missing');assert(u.join==0,'Character not currently joined')
+ local stat;for _,v in ipairs(BASE_STATS)do if v.id==statId then stat=v end end
+ assert(stat,'Unsupported stat')
+ assert(u.values[statId]&lt;=stat.max,'Existing bonus exceeds editor range; stop')
+ assert(type(target)=='number' and target==math.floor(target) and target&gt;=0 and target&lt;=stat.max,'Enter a whole number from 0 to '..stat.max)
+ return {unit=u,stat=stat,before=u.values[statId],target=target,delta=target-u.values[statId]}
+end
+local function verifyBaseStatSnapshot(before,after,op,applied)
+ assert(after.pointer==before.pointer and after.count==before.count,'Character array changed')
+ for _,u in ipairs(before.units)do
+  local v=assert(after.byId[u.id],'Character missing')
+  assert(v.address==u.address and v.pointer==u.pointer and v.xp==u.xp and v.join==u.join,'Character context changed')
+  for j=0,19 do
+   local expected=applied and u.id==op.unit.id and j==op.stat.id and op.target or u.values[j]
+   assert(v.values[j]==expected,'Bonus changed unexpectedly: '..u.id..' / '..j)
+  end
+ end
+end
+
+-- One native increment plus an unchanged-EXP refresh; never freezes the values.
+local function startBaseStatEdit(s,snapshot,op,onComplete)
+ assert(not (_G.FFRS_BASE_STAT_ACTION and _G.FFRS_BASE_STAT_ACTION.running),'Another stat edit is pending')
+ local al=getAddressList();for i=0,al.Count-1 do if al[i].ID==7 or al[i].ID==8 then assert(not al[i].Active,'Turn off 07 and 08')end end
+ checkCode(s.base+0x5106CD0,{0x40,0x56,0x57,0x41,0x57,0x48,0x83,0xEC,0x20,0x45,0x8B,0xF8,0x0F,0xB6,0xF2,0x8B,0xF9})
+ checkCode(s.base+0x524B3A0,{0x48,0x89,0x5C,0x24,0x18,0x48,0x89,0x74,0x24,0x20,0x57,0x48,0x81,0xEC,0xD0,1,0,0})
+ checkCode(s.base+0x5249B90,{0x48,0x83,0xEC,0x38,0x48,0x89,0x5C,0x24,0x48,0x48,0x89,0x6C,0x24,0x50})
+ checkCode(s.base+0x523D360,{0x40,0x53,0x48,0x83,0xEC,0x20,0x8B,0xD9,0xE8,0x13,0x10,0xE2,0xFF})
+ checkCode(s.base+0x5234A90,{0x48,0x89,0x5C,0x24,8,0x48,0x89,0x6C,0x24,0x10,0x48,0x89,0x74,0x24,0x18})
+ checkCode(s.base+0x5236670,{0x48,0x89,0x74,0x24,0x10,0x57,0x48,0x81,0xEC,0xC0,0,0,0})
+ local b=battleObjects(s);battleDirectLinks(s,b).refresh()
+ local world=readPointer(s.base+0x9AA0540);local ui
+ for o in pairs(b.interfaces)do if readPointer(o+32)==world then assert(not ui,'Multiple battle interfaces');ui=o end end
+ assert(ui and readBytes(ui+0x80,1)==0,'Edit only outside battle')
+ local thread=createGameThread(s);local timer=createTimer(nil,false);timer.Interval=250
+ local r={running=true,status='Waiting for game foreground',applied=false};_G.FFRS_BASE_STAT_ACTION=r
+ local started=getTickCount()
+ local function stop()if not r.running then return end;r.running=false;timer.Enabled=false;timer.destroy();pcall(thread.stop);b.clear()end
+ r.stop=stop
+ local function guards(applied)
+  assert(getOpenedProcessID()==s.pid and readPointer(s.base+0x9AA0540)==world and readPointer(s.manager+0x60)==s.save,'Game/save changed')
+  assert(readBytes(ui+0x80,1)==0,'Battle started')
+  verifyBaseStatSnapshot(snapshot,baseStatSnapshot(s),op,applied)
+  local g={};for _,o in ipairs({world,s.manager,s.save,ui})do assert(b.live(o,false,g),'Object expired')end
+  for _,v in ipairs({{s.base+0x9AA0540,world},{s.manager+0x60,s.save},{ui+0x80,0,1},
+   {s.save+0x60,snapshot.pointer},{s.save+0x68,snapshot.count,4},{op.unit.address,op.unit.id,4},
+   {op.unit.address+4,op.unit.xp,4},{op.unit.address+0x80,0,1},{op.unit.address+0x10,op.unit.pointer},
+   {op.unit.address+0x18,20,4},{op.unit.pointer+op.stat.id*4,applied and op.target or op.before,4}})do g[#g+1]=v end
+  return g
+ end
+ timer.OnTimer=function()
+  local ok,err=pcall(function()
+   assert(getTickCount()-started&lt;120000,'Stat edit timed out')
+   assert(getOpenedProcessID()==s.pid,'Process changed')
+   if executeCodeEx(0,3000,getAddressSafe('user32.GetForegroundWindow'))~=thread.hwnd then return end
+   if op.delta~=0 then
+    assert(thread.call(s.base+0x5106CD0,op.unit.id,op.stat.id,guards(false),op.delta),'Stat call rejected')
+    r.applied=true
+    -- Keep recovery information even if the subsequent refresh fails.
+    _G.FFRS_BASE_STAT_UNDO={pid=s.pid,save=s.save,unit=op.unit.id,stat=op.stat.id,before=op.before,after=op.target}
+   end
+   assert(thread.call(s.base+0x524B3A0,op.unit.id,op.unit.xp,guards(true),0),'Refresh failed; bonus may already be changed')
+   -- The EXP refresh re-adds persistent effects. Normalize them through the
+   -- same remove/rebuild routine used by the game's equipment-change path.
+   local param=executeCodeEx(0,3000,s.base+0x523D360,op.unit.id)
+   local g=guards(true);assert(param and b.live(param,false,g),'Live character unavailable')
+   assert(readInteger(param+0xD0)==op.unit.id,'Live character ID mismatch')
+   g[#g+1]={param+0xD0,op.unit.id,4}
+   assert(thread.call(s.base+0x5249B90,param,0,g,0),'Effect normalization failed')
+   assert(thread.call(s.base+0x5234A90,param,0,g,0),'HP/MP clamp failed')
+   assert(thread.call(s.base+0x5236670,op.unit.id,0,g,0),'Menu refresh failed')
+   verifyBaseStatSnapshot(snapshot,baseStatSnapshot(s),op,true)
+   r.status='Complete';stop();if onComplete then onComplete(r)end
+  end)
+  if not ok then r.error=tostring(err);r.status='Error';stop();showMessage(r.error..'\nBonus applied: '..tostring(r.applied))end
+ end
+ timer.Enabled=true;return r
+end
+
+
+assert(not (_G.FFRS_BASE_STAT_ACTION and _G.FFRS_BASE_STAT_ACTION.running),'Stat edit already pending')
+local function choose(title,prompt,labels)
+ local list=createStringlist();for _,v in ipairs(labels)do list.add(v)end
+ local ok,index=pcall(showSelectionList,title,prompt,list,false);list.destroy();if not ok then error(index)end
+ if index==nil or index&lt;0 then return nil end;return index+1
+end
+local s=connect();local snapshot=baseStatSnapshot(s)
+local labels,ids={},{}
+for _,u in ipairs(snapshot.units)do if u.join==0 then ids[#ids+1]=u.id;labels[#labels+1]=CHARACTER_NAMES[u.id]end end
+local undo=_G.FFRS_BASE_STAT_UNDO
+local canUndo=undo and undo.pid==s.pid and undo.save==s.save
+if canUndo then labels[#labels+1]='還原上一次能力修改 / Undo last stat edit'end
+local choice=choose('角色能力 / Character stats','選擇目前已加入的角色。修改永久加成，不是裝備後的最終數值。',labels)
+if not choice then return end
+local op
+if canUndo and choice==#labels then
+ local u=assert(snapshot.byId[undo.unit]);assert(u.values[undo.stat]==undo.after,'Value has changed since the edit; undo cancelled')
+ op=baseStatPlan(snapshot,undo.unit,undo.stat,undo.before)
+else
+ local id=assert(ids[choice]);local u=snapshot.byId[id];local statLabels={}
+ for _,stat in ipairs(BASE_STATS)do statLabels[#statLabels+1]=stat.label..'  +'..u.values[stat.id]end
+ local index=choose(CHARACTER_NAMES[id],'選擇能力；右側為累計永久加成。',statLabels);if not index then return end
+ local stat=BASE_STATS[index]
+ local value=inputQuery('設定永久加成 / Set permanent bonus',stat.label..'：輸入新的累計加成（0–'..stat.max..'），不是本次增加量。',tostring(u.values[stat.id]))
+ if value==nil then return end
+ op=baseStatPlan(snapshot,id,stat.id,tonumber(value))
+end
+if op.delta==0 then showMessage('數值相同，無需修改。 / No change needed.');return end
+startBaseStatEdit(s,snapshot,op,function()
+ showMessage(CHARACTER_NAMES[op.unit.id]..' / '..op.stat.label..'：+'..op.before..' → +'..op.target..'\n請重開角色選單確認。取消勾選不會還原；再次執行可選還原上一次修改。')
+end)
+
+{$asm}
+[DISABLE]
+{$lua}
+if syntaxcheck then return end
+if _G.FFRS_BASE_STAT_ACTION and _G.FFRS_BASE_STAT_ACTION.running then _G.FFRS_BASE_STAT_ACTION.stop()end
+
+{$asm}
+</AssemblerScript>
+    </CheatEntry>
   </CheatEntries>
   <UserdefinedSymbols />
 </CheatTable>

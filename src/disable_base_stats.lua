@@ -1,0 +1,1 @@
+if _G.FFRS_BASE_STAT_ACTION and _G.FFRS_BASE_STAT_ACTION.running then _G.FFRS_BASE_STAT_ACTION.stop()end

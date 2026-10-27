@@ -21,6 +21,7 @@ For Steam **build 24250053**. Tested on macOS with standard CrossOver and Window
 | 11 | Fill the current acting character’s Limit gauge once; no automatic casting |
 | 12 | Unlock Fel Meteor for Dark Fina once; skip if already learned |
 | 13 | Automatic map speed: on foot 3x / mounted 3.5x; optional one-shot multipliers |
+| 14 | Select a character and set permanent stat bonuses; undo the last edit |
 
 Entries are independent and disabled by default. Entries 01–06 run once, without freezing values; unchecking does not undo changes. Uncheck and recheck to run them again. Entries 07 and 08 run while checked and can be disabled separately. Their shared callback is removed when both are disabled.
 
@@ -335,3 +336,13 @@ Select “Auto: on foot 3x / mounted 3.5x” in entry 13 and leave it checked. M
 Automatic mode follows the controlled map actor without compounding. It suspends application during battles or when free movement is unavailable. The 1x/1.5x/2x/3x one-shot options remain available: 1x restores the baseline; unchecking a one-shot option does not restore it. Global time, animation speed and battle speed are unchanged.
 
 Live validation on standard CrossOver, 2026-10-27: magitek armor baselines 350/500/400 became 1225/1750/1400 at 3.5x. The user confirmed normal mounting/dismounting with no compounding. Stopping restored on-foot values to 180/450/230. Isolated tests also cover pause/resume, actor switching and disable restoration. Interiors, airships and battle transitions have not been live-tested; airships are unsupported.
+
+### Permanent character stat bonuses
+
+Entry 14 lets you select a currently joined character, choose HP, MP, Strength, Vitality, Magic, Spirit, Speed or AP, then enter the new **total permanent bonus** (0–9999). These are the bonus fields used by story rewards, not final equipment-adjusted stats. Setting the HP bonus from 0 to 1000 adds 1000 base HP; equipment, abilities and game caps still affect the displayed result. Applying the same value again does not stack it.
+
+Disable entries 07 and 08 and stay in a map menu. After entering a value, return the game to the foreground and reopen the character menu when finished. This is a one-shot edit; unchecking does not revert it. Reopen entry 14 and choose “Undo last stat edit” to restore the previous bonus, provided the current value still matches. Undo history lasts only for the current CE session. Read values again after reloading a save or restarting the game.
+
+Separate modules handle bonus data/validation, native execution and the selection interface. The native bonus setter is followed by character recalculation and persistent-effect rebuilding to prevent equipment/ability effects from stacking on repeated refreshes. AP uses `EquipCost`, not the separate `AP` enum member.
+
+Live CrossOver tests on Fina passed small increases and restoration for all eight stats: HP 5708→5709→5708, MP 1099→1101→1099, Strength 420→421→420, Vitality 410→411→410, Magic 586→587→586, Spirit 639→640→639, Speed 441→442→441, AP 516→517→516. The MP difference includes the current multipliers. All tested permanent bonuses were restored. Save/reload persistence for this feature has not been tested.

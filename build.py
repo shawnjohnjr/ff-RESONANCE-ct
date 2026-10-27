@@ -108,6 +108,13 @@ TABLE_ENTRIES = (
         helper_sources=("battle_direct_links.lua", "battle_objects.lua", "memory_checks.lua", "map_movement_speed.lua", "map_speed_runtime.lua"),
         disable_source="disable_map_speed.lua",
     ),
+    TableEntry(
+        14, "14 角色永久能力加成（選角色／數值／還原）",
+        "edit_character_base_stats.lua",
+        helper_sources=("party_progression.lua", "memory_checks.lua", "game_thread_dispatch.lua",
+                        "battle_direct_links.lua", "battle_objects.lua", "character_base_stats.lua", "character_base_stat_action.lua"),
+        disable_source="disable_base_stats.lua",
+    ),
 )
 
 
