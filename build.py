@@ -56,8 +56,10 @@ TABLE_ENTRIES = (
     TableEntry(2, "02 設定持有 Gil", "set_gil.lua"),
     TableEntry(3, "03 唯讀背包清單：內部 ID 與數量", "list_inventory.lua"),
     TableEntry(
-        4, "04 選擇道具並修改數量（英文／繁中／已持有）",
+        4, "04 道具數量／魔導裝甲之鑰（英文／繁中）",
         "edit_item_quantity.lua", uses_gameplay_helpers=True,
+        helper_sources=("game_thread_dispatch.lua", "battle_direct_links.lua", "battle_objects.lua", "grant_magitek_key.lua"),
+        disable_source="disable_item_action.lua",
     ),
     TableEntry(
         5, "05 目前隊伍升至 Lv.99",

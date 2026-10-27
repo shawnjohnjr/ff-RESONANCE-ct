@@ -320,3 +320,9 @@ Entry 10 modules: `src/vision_acquisition.lua` handles the catalog, missing rost
 Entry 12 reuses the live-tested native learning and parameter-refresh calls to add Fel Meteor (408160) to Dark Fina, preserving existing skills and EXP. Disable 07/08, leave battle, stay in a normal menu, enable the entry, and return to the game foreground. Already-learned skills are skipped. Unchecking cancels a pending action; it does not remove a learned skill.
 
 This directly unlocks the Digital Deluxe bonus skill; it does not grant the tome, other bonuses, or change Steam DLC ownership. Skill display, battle execution, and animation were confirmed in-game. Persistence after saving and reloading has not been verified. No save command is issued, but game autosaves may preserve the change; retain a pre-modification save. Use entry 11 separately to refill the Limit gauge.
+
+### Magitek Armor Key / 魔導裝甲之鑰
+
+Entry 04 now includes **Magitek Armor Key / 魔導裝甲之鑰 (29500)**. Selecting it grants one if missing and skips if already owned. Stay outside battle in a normal menu, then return the game to the foreground; unchecking cancels a pending grant. Ordinary item quantity editing still requires ownership, and other key items remain excluded.
+
+After acquiring a chocobo, use the key in the game’s Items menu to switch its appearance. Tested on standard CrossOver on 2026-10-27: quantity 0 → 1, other inventory and Gil unchanged; the user confirmed successful use and magitek armor riding appearance. DLC receipt and Steam ownership states were not modified. Save/reload persistence remains unverified.

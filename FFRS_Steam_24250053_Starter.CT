@@ -338,7 +338,7 @@ showMessage(table.concat(lines,'\n'))
     </CheatEntry>
     <CheatEntry>
       <ID>4</ID>
-      <Description>"04 選擇道具並修改數量（英文／繁中／已持有）"</Description>
+      <Description>"04 道具數量／魔導裝甲之鑰（英文／繁中）"</Description>
       <VariableType>Auto Assembler Script</VariableType>
       <AssemblerScript>[ENABLE]
 {$lua}
@@ -1083,17 +1083,616 @@ local function setParty99(s,plan,party,n,units)
  end
  return report
 end
+--[[
+Reference: https://github.com/Darjjj/resonance-game-boosters
+MIT License
+
+Copyright (c) 2026 FxDarj
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+]]
+
+-- Run reflected calls on the game's window thread, following the reference mod.
+-- No executable bytes or DLL files are replaced. Retain callback memory until
+-- process exit: UnhookWindowsHookEx does not guarantee an in-flight return ended.
+local function createGameThread(s)
+ local p=assert(allocateMemory(4096,nil,0x04),'Cannot allocate read/write game-thread mailbox')
+ local code=assert(allocateMemory(4096,nil,0x40),'Cannot allocate separate callback page')
+ local function api(n) return assert(getAddressSafe(n),'Missing Windows API: '..n) end
+ writeBytes(p,table.unpack({0,0,0,0,0,0,0,0}))
+ writeString(p+0x100,'UnrealWindow',true)
+ local hwnd=executeCodeEx(0,3000,api('user32.FindWindowW'),p+0x100,0)
+ assert(hwnd and hwnd~=0,'Game window unavailable')
+ local tid=executeCodeEx(0,3000,api('user32.GetWindowThreadProcessId'),hwnd,p+0x180)
+ assert(readInteger(p+0x180)==s.pid and tid~=0,'Game window belongs to another process')
+ local assembly=string.format([[
+define(mailbox,%X)
+define(callback,%X)
+define(clock,%X)
+define(foreground,%X)
+define(nextHook,%X)
+define(queryMemory,%X)
+label(forward)
+label(reject)
+label(checkGuard)
+label(guardByte)
+label(guardDword)
+label(guardNext)
+label(invoke)
+callback:
+ push rbx
+ push rsi
+ push rdi
+ push r12
+ sub rsp,98
+ mov [rsp+20],ecx
+ mov [rsp+28],rdx
+ mov [rsp+30],r8
+ test ecx,ecx
+ js forward
+ cmp edx,1
+ jne forward
+ mov rbx,mailbox
+ mov rcx,rbx
+ lea rdx,[rsp+40]
+ mov r8d,30
+ mov rax,queryMemory
+ call rax
+ cmp rax,30
+ jne forward
+ cmp dword ptr [rsp+60],1000
+ jne forward
+ mov eax,[rsp+64]
+ test eax,101
+ jnz forward
+ test eax,EE
+ jz forward
+ mov rax,[rsp+40]
+ add rax,[rsp+58]
+ lea rcx,[rbx+1000]
+ cmp rax,rcx
+ jb forward
+ cmp dword ptr [rbx],1
+ jne forward
+ mov eax,1
+ mov ecx,2
+ lock cmpxchg [rbx+4],ecx
+ jne forward
+ mov dword ptr [rbx+48],1
+ mov rax,clock
+ call rax
+ cmp rax,[rbx+8]
+ jae reject
+ mov dword ptr [rbx+48],2
+ mov rax,foreground
+ call rax
+ cmp rax,[rbx+38]
+ jne reject
+ mov dword ptr [rbx+48],3
+ mov edi,[rbx+30]
+ lea rsi,[rbx+400]
+checkGuard:
+ mov [rbx+4C],edi
+ test edi,edi
+ jz invoke
+ mov rcx,[rsi]
+ lea rdx,[rsp+40]
+ mov r8d,30
+ mov rax,queryMemory
+ call rax
+ cmp rax,30
+ jne reject
+ cmp dword ptr [rsp+60],1000
+ jne reject
+ mov eax,[rsp+64]
+ test eax,101
+ jnz reject
+ test eax,EE
+ jz reject
+ mov rax,[rsp+40]
+ add rax,[rsp+58]
+ mov rcx,[rsi]
+ mov edx,[rsi+10]
+ add rcx,rdx
+ cmp rax,rcx
+ jb reject
+ mov rax,[rsi]
+ mov rdx,[rsi+8]
+ cmp dword ptr [rsi+10],1
+ je guardByte
+ cmp dword ptr [rsi+10],4
+ je guardDword
+ cmp [rax],rdx
+ jne reject
+ jmp guardNext
+guardByte:
+ cmp [rax],dl
+ jne reject
+ jmp guardNext
+guardDword:
+ cmp [rax],edx
+ jne reject
+guardNext:
+ add rsi,18
+ dec edi
+ jmp checkGuard
+invoke:
+ mov dword ptr [rbx+48],0
+ mov rcx,[rbx+18]
+ mov rdx,[rbx+20]
+ mov r8,[rbx+28]
+ mov rax,[rbx+10]
+ call rax
+ mov dword ptr [rbx+4],3
+ jmp forward
+reject:
+ mov dword ptr [rbx+4],4
+forward:
+ xor ecx,ecx
+ mov edx,[rsp+20]
+ mov r8,[rsp+28]
+ mov r9,[rsp+30]
+ mov rax,nextHook
+ call rax
+ add rsp,98
+ pop r12
+ pop rdi
+ pop rsi
+ pop rbx
+ ret
+]],p,code,api('kernel32.GetTickCount64'),api('user32.GetForegroundWindow'),api('user32.CallNextHookEx'),api('kernel32.VirtualQuery'))
+ assert(autoAssemble(assembly),'Cannot assemble window-thread callback')
+ writeQword(p+0x38,hwnd)
+ local hook=executeCodeEx(0,3000,api('user32.SetWindowsHookExW'),3,code,0,tid)
+ assert(hook and hook~=0,'Cannot install game window callback')
+ writeInteger(p,1)
+ local stopped=false
+ local t={buffer=p+0x200,base=p,code=code,hwnd=hwnd,tid=tid}
+ function t.stop()
+  if stopped then return end
+  stopped=true
+  if getOpenedProcessID()~=s.pid or readSmallInteger(s.base)~=0x5A4D then return end
+  writeInteger(p,0)
+  -- An already executing command can finish; no new one will begin.
+  executeCodeEx(0,3000,api('user32.UnhookWindowsHookEx'),hook)
+ end
+ function t.call(process,target,fn,guards,nativeR8)
+  assert(not stopped,'Game-thread dispatcher stopped')
+  assert(#guards&lt;=100,'Too many call guards')
+  assert(getOpenedProcessID()==s.pid and readInteger(p)==1,'Mailbox unavailable; stop automation')
+  local state=readInteger(p+4)
+  assert(state~=1 and state~=2,'Previous command still pending; stop automation')
+  writeQword(p+0x10,process);writeQword(p+0x18,target)
+  writeQword(p+0x20,fn);writeQword(p+0x28,nativeR8 or t.buffer)
+  writeInteger(p+0x30,#guards)
+  for i,g in ipairs(guards) do
+   local a=p+0x400+(i-1)*24
+   writeQword(a,g[1]);writeQword(a+8,g[2]);writeInteger(a+16,g[3] or 8)
+  end
+  -- CE and the game use the same Windows uptime clock in this Wine bottle.
+  writeQword(p+8,getTickCount()+1000)
+  writeInteger(p+4,1)
+  executeCodeEx(0,3000,api('user32.PostThreadMessageW'),tid,0,0,0)
+  local start=getTickCount()
+  repeat
+   state=readInteger(p+4)
+   if state==3 then return true end
+   if state==4 then return false end
+   sleep(5)
+  until getTickCount()-start&gt;1200
+  t.stop();error('Game window did not process the command; automation stopped')
+ end
+ return t
+end
+
+-- Validated links for Steam build 24250053; no process-wide pointer scan.
+local function battleDirectLinks(s,b)
+ local cached={}
+ local function subsystem(owner,offset,wanted)
+  if not b.live(owner) then return end
+  local old=cached[wanted]
+  if old and old.owner==owner and b.live(old.object)==old.identity and readPointer(old.object+0x20)==owner then return old.object end
+  cached[wanted]=nil
+  local m=owner+offset;local p=readPointer(m)
+  local n,cap=readInteger(m+8),readInteger(m+12)
+  local bits,count=readPointer(m+0x20),readInteger(m+0x28)
+  if not p or p&lt;65536 or not n or not cap or n&lt;0 or n&gt;cap or cap&gt;256 or not count or count&lt;n or count&gt;256 then return end
+  if not bits or bits==0 then bits=m+0x10 end
+  for i=0,n-1 do
+   local flags=readInteger(bits+math.floor(i/32)*4)
+   if not flags then return end
+   if (flags &amp; (1&lt;&lt;(i%32)))~=0 then
+    local key=readPointer(p+i*24);local value=readPointer(p+i*24+8)
+    if b.live(key,true) and s.oname(key)==wanted and b.live(value) and b.isa(value,key) and readPointer(value+0x20)==owner then
+     cached[wanted]={owner=owner,object=value,identity=b.live(value)};return value
+    end
+   end
+  end
+ end
+ local function accept(o,class,cache)
+  local identity=b.live(o)
+  if not identity or not b.isa(o,class) then return end
+  cache[o]=identity;b.reflectClass(readPointer(o+16));return o
+ end
+ local function weak(address)
+  local index,serial=readInteger(address),readInteger(address+4)
+  if not index or index&lt;=0 or not serial or serial&lt;=0 then return end
+  local o=s.at(index)
+  if b.live(o)==tostring(index)..':'..tostring(serial) then return o end
+ end
+ local d={}
+ local lastRefresh,lastLinked=0,false
+ function d.clear() cached={};lastRefresh=0;lastLinked=false end
+ function d.refresh()
+  local now=getTickCount()
+  if now-lastRefresh&lt;250 then return lastLinked end
+  lastRefresh=now;lastLinked=false
+  local world=readPointer(s.base+0x9AA0540)
+  if not b.live(world) then return false end
+  local gi=readPointer(world+0x228)
+  local widgets=subsystem(gi,0x108,'CPP_GameWidgetManagerSubsystem')
+  local root=widgets and accept(readPointer(widgets+0x80),'WBP_OverAllLayout_C',b.roots)
+  local ui=subsystem(world,0x930,'CPP_UI_BattleSubsystem')
+  if not ui then return false end
+  b.interfaces[ui]=b.live(ui)
+  accept(readPointer(ui+0x48),'WBP_Btl_ResultLayout_C',b.results)
+  local widget=weak(ui+0x40)
+  local view
+  if widget and b.isa(widget,'WBP_BattleLayout_C') then
+   local commands=readPointer(widget+0x5A0)
+   if b.live(commands) and b.isa(commands,'WBP_BtlCmdLayout_C') then
+    view=accept(readPointer(commands+0x5A8),'CPP_VM_BtlCmd',b.views)
+   end
+  end
+  -- A missing/changed link leaves the original discovery sweep available.
+  lastLinked=root~=nil and (readBytes(ui+0x80,1)==0 or view~=nil)
+  return lastLinked
+ end
+ return d
+end
+
+-- Reflection and state validation adapted from Darjjj/resonance-game-boosters (MIT).
+local function battleObjects(s)
+ local b={functions={},interfaces={},views={},results={},roots={},cursor=0,seen=0}
+ local spec={
+  GetBattleUnitByUniqueId={'CPP_BFL_Battle',true},
+  GetUnitParameter={'CPP_BtlUnit',false},GetRelation={'CPP_UnitParameter',false},
+  GetUnitAI={'CPP_BtlUnit',false},GetFightSkillId={'CPP_BtlUnitAI',false},
+  CancelCommand={'CPP_VM_BtlCmd',false,true,0},
+  CanActivateAction={'CPP_VM_BtlCmd',false},DecideActionKey={'CPP_VM_BtlCmd',false},
+  GetDefaultSkillTargetUnitUniqueId={'CPP_BFL_Battle',true},
+  DecideTarget={'CPP_VM_BtlCmd',false},IsEnableCommand={'CPP_BFL_Battle',true},
+  IsGamePaused={'GameplayStatics',true},IsPlayingEvent={'CPP_BFL_TalkEvent',true},
+  IsPlaying={'CPP_BFL_Movie',true},
+  InputDecide={'WBP_Btl_ResultLayout_C',false,false,1},
+  IsInViewport={'Widget',false},
+ }
+ local registry=s.base+0x9D84DD0
+ local inheritance={}
+ local reflected={}
+ local scanChunks={}
+ local kinds={}
+ local lastPrune=0
+ local kindPruneCursor,inheritancePruneCursor
+ local priorityCursor=nil
+ b.discovery={mode='background',inspected=0,elapsedMs=0,boosts=0,pruned=0}
+ -- Store identities as well as addresses: Unreal can reuse object/class slots.
+ function b.prune(limit)
+  limit=limit or math.huge
+  local removed=0
+  for _,cache in ipairs({b.interfaces,b.views,b.results,b.roots}) do
+   for o,identity in pairs(cache) do
+    if b.live(o)~=identity then cache[o]=nil;removed=removed+1 end
+   end
+  end
+  local function pruneClasses(cache,cursor)
+   local key=cursor or next(cache)
+   local visited=0
+   while key and visited&lt;limit do
+    local entry=cache[key];local following=next(cache,key)
+    if b.live(key,true)~=entry.identity then cache[key]=nil;removed=removed+1 end
+    key=following;visited=visited+1
+   end
+   return key
+  end
+  kindPruneCursor=pruneClasses(kinds,kindPruneCursor)
+  inheritancePruneCursor=pruneClasses(inheritance,inheritancePruneCursor)
+  if b.activeView and b.live(b.activeView)~=b.activeViewIdentity then
+   b.activeView=nil;b.activeViewIdentity=nil
+  end
+  for name,fn in pairs(b.functions) do
+   if b.live(fn.object)~=fn.identity then b.functions[name]=nil;if fn.owner then reflected[fn.owner]=nil end;removed=removed+1 end
+  end
+  b.discovery.pruned=b.discovery.pruned+removed
+ end
+ local clearDirect
+ function b.clear()
+  if clearDirect then clearDirect() end
+  b.functions={};b.interfaces={};b.views={};b.results={};b.roots={}
+  b.activeView=nil;b.activeViewIdentity=nil
+  inheritance={};scanChunks={};kinds={}
+  kindPruneCursor=nil;inheritancePruneCursor=nil;priorityCursor=nil
+ end
+ local function slot(index)
+  local count=readInteger(registry+0x14)
+  if not index or index&lt;0 or not count or index&gt;=count or count&gt;2000000 then return end
+  local chunks=readPointer(registry);if not chunks then return end
+  local chunk=readPointer(chunks+math.floor(index/65536)*8)
+  if chunk and chunk&gt;65536 then return chunk+(index%65536)*24 end
+ end
+ function b.live(o,defaults,guards)
+  if not o or o&lt;65536 then return end
+  local flags=readInteger(o+8);local index=readInteger(o+12)
+  if not flags or (flags &amp; (defaults and 0x18000 or 0x18010))~=0 then return end
+  local a=slot(index)
+  if not a or readPointer(a)~=o then return end
+  local serial=readInteger(a+16);if not serial then return end
+  if guards then
+   guards[#guards+1]={a,o};guards[#guards+1]={a+16,serial,4}
+   guards[#guards+1]={o+8,flags,4}
+  end
+  return tostring(index)..':'..tostring(serial)
+ end
+ function b.isa(o,class)
+  local c=readPointer(o+16)
+  if not c then return false end
+  local identity=b.live(c,true);if not identity then return false end
+  local cached=inheritance[c]
+  if not cached or cached.identity~=identity then
+   cached={identity=identity,answers={}};inheritance[c]=cached
+  end
+  if cached.answers[class]~=nil then return cached.answers[class] end
+  for _=1,32 do
+   if not c or c&lt;65536 then return false end
+   if type(class)=='number' and c==class or type(class)=='string' and s.oname(c)==class then cached.answers[class]=true;return true end
+   c=readPointer(c+0x40)
+  end
+  cached.answers[class]=false;return false
+ end
+ function b.registerFunction(o)
+   local n=s.oname(o);local wanted=spec[n]
+   if wanted and b.live(o,false) then
+    local owner=readPointer(o+32);local flags=readInteger(o+0xB0)
+    local native=wanted[3]~=false
+    if s.oname(owner)==wanted[1] and flags and ((flags &amp; 0x400)~=0)==native and (native or (flags &amp; 0x800)~=0) and ((flags &amp; 0x2000)~=0)==wanted[2] then
+     b.functions[n]={object=o,owner=owner,static=wanted[2],native=native,paramSize=wanted[4],identity=b.live(o),defaults=readPointer(owner+0x110)}
+    end
+   end
+
+ end
+ function b.reflectClass(c)
+  for _=1,32 do
+   local identity=b.live(c,true)
+   if not identity or reflected[c]==identity then return end
+   local owner=s.oname(c);local wanted=false
+   for _,entry in pairs(spec) do if entry[1]==owner then wanted=true;break end end
+   if wanted then
+    reflected[c]=identity
+    local f=readPointer(c+0x48);local visited={}
+    for _=1,1024 do
+     if not b.live(f) or visited[f] then break end
+     visited[f]=true
+     if readPointer(f+0x20)==c and s.oname(readPointer(f+16))=='Function' then b.registerFunction(f) end
+     f=readPointer(f+0x28)
+    end
+   end
+   c=readPointer(c+0x40)
+  end
+ end
+ local direct=battleDirectLinks and battleDirectLinks(s,b)
+ clearDirect=function() reflected={};if direct then direct.clear() end end
+ local wantedClasses={}
+ for _,entry in pairs(spec) do wantedClasses[entry[1]]=true end
+ local function inspect(i,classesOnly)
+  local chunkIndex=math.floor(i/65536)
+  local chunk=scanChunks[chunkIndex]
+  if not chunk then
+   local chunks=readPointer(registry)
+   chunk=chunks and readPointer(chunks+chunkIndex*8);scanChunks[chunkIndex]=chunk
+  end
+  local a=chunk and chunk+(i%65536)*24;local o=a and readPointer(a)
+  if not o or o&lt;65536 then return end
+  local klass=readPointer(o+16);if not klass or klass&lt;65536 then return end
+  if classesOnly then
+   if s.oname(klass)=='Class' and wantedClasses[s.oname(o)] then b.reflectClass(o) end
+   return
+  end
+  local cached=kinds[klass]
+  local cn=cached and cached.value
+  if not cn then
+   local identity=b.live(klass,true);if not identity then return end
+   cn=s.oname(klass)
+   if cn~='Function' and cn~='Class' then
+    cn=b.isa(o,'CPP_UI_BattleSubsystem') and 'UI' or b.isa(o,'CPP_VM_BtlCmd') and 'View' or b.isa(o,'WBP_Btl_ResultLayout_C') and 'Result' or b.isa(o,'WBP_OverAllLayout_C') and 'Root' or 'Other'
+   end
+   kinds[klass]={identity=identity,value=cn}
+  end
+  if cn=='Function' then b.registerFunction(o)
+  elseif cn=='Class' then b.reflectClass(o)
+  elseif cn=='UI' and b.live(o,false) then b.interfaces[o]=b.live(o)
+  elseif cn=='View' and b.live(o,false) then b.views[o]=b.live(o)
+  elseif cn=='Result' and b.live(o,false) then b.results[o]=b.live(o)
+  elseif cn=='Root' and b.live(o,false) then b.roots[o]=b.live(o) end
+ end
+ function b.scan(budget,modes)
+  local n=assert(readInteger(registry+0x14));assert(n&gt;=0 and n&lt;2000000,'Invalid object count')
+  local start=getTickCount()
+  local linked=direct and direct.refresh()
+  if start-lastPrune&gt;=2000 then b.prune(8);lastPrune=start end
+  scanChunks={} -- Chunk pointers are reused only within this slice.
+  b.seen=math.min(b.seen,n)
+  local mode='background'
+  if linked and b.ready('attack') and (b.ready('results') or not next(b.results)) then
+   b.discovery.mode='direct';b.discovery.inspected=0;b.discovery.elapsedMs=getTickCount()-start;return
+  end
+  if modes and modes.attack then
+   local _,reason=b.context()
+   if reason=='missing-command-view' then budget=math.max(budget,4096);mode='command-view' end
+  end
+  if mode=='background' and b.seen&lt;n then budget=math.max(budget,2048);mode='initial' end
+  if mode~='background' then
+   if b.discovery.mode~=mode or not priorityCursor or priorityCursor&gt;=n then priorityCursor=n-1 end
+  else priorityCursor=nil end
+  if mode~='background' then b.discovery.boosts=b.discovery.boosts+1 end
+  local processed=0
+  -- Visit reused slots too: registry size need not grow between battles.
+  while processed&lt;budget and n&gt;0 do
+   if not linked and mode~='background' and processed%2==0 then
+    -- UI objects often reuse high registry slots; search backwards as well.
+    -- Alternate with the full sweep so low reused slots cannot starve.
+    if priorityCursor&lt;0 then priorityCursor=n-1 end
+    inspect(priorityCursor);priorityCursor=priorityCursor-1
+   elseif b.seen&lt;n then inspect(b.seen,linked);b.seen=b.seen+1
+   else
+    if b.cursor&gt;=n then b.cursor=0 end
+    inspect(b.cursor);b.cursor=b.cursor+1
+   end
+   processed=processed+1
+   -- Bound each burst so CE keeps servicing its UI and the stop switch.
+   if processed%32==0 and getTickCount()-start&gt;=20 then break end
+  end
+  b.discovery.mode=mode;b.discovery.inspected=processed
+  b.discovery.elapsedMs=getTickCount()-start
+ end
+ function b.ready(mode)
+  local resultNames={InputDecide=true,IsInViewport=true,IsGamePaused=true,IsPlayingEvent=true,IsPlaying=true}
+  for n in pairs(spec) do
+   local needed=mode=='results' and resultNames[n] or mode~='results' and n~='InputDecide' and n~='IsInViewport'
+   if needed and not b.functions[n] then return false,n end
+  end
+  return true
+ end
+ local function add(g,a,v,size) g[#g+1]={a,v,size} end
+ function b.context()
+  local world=readPointer(s.base+0x9AA0540);local g={}
+  if not b.live(world,false,g) then return end
+  add(g,s.base+0x9AA0540,world)
+  local ui
+  for o,identity in pairs(b.interfaces) do
+   if b.live(o)~=identity or not b.isa(o,'CPP_UI_BattleSubsystem') then b.interfaces[o]=nil
+   elseif readPointer(o+32)==world and readBytes(o+0x80,1)==1 then
+    if ui then return end;ui=o
+   end
+  end
+  if not ui or not b.live(ui,false,g) then return end
+  local phase=readBytes(ui+0x50,1)
+  if not phase or phase&gt;2 then return end
+  add(g,ui+32,world);add(g,ui+0x80,1,1);add(g,ui+0x50,phase,1)
+  local manager=readPointer(ui+0x70)
+  local mid=b.live(manager,false,g)
+  if not mid or readPointer(manager+32)~=ui then return end
+  local typ=readBytes(manager+0x30,1);local state=readBytes(manager+0x31,1)
+  if not typ or typ&gt;2 or not state or state&gt;1 then return end
+  local asset=readPointer(manager+0x28)
+  local index=readInteger(manager+0x58);local count=readInteger(manager+0x68)
+  if not index or not count or count&lt;0 or count&gt;16 then return end
+  add(g,ui+0x70,manager);add(g,manager+32,ui)
+  add(g,manager+0x30,typ,1);add(g,manager+0x31,state,1);add(g,manager+0x28,asset)
+  local unit
+  if typ&lt;2 then
+   if index&lt;0 or index&gt;=count then return end
+   local list=readPointer(manager+0x60);if not list or list&lt;65536 then return end
+   unit=readInteger(list+index*4)
+   add(g,manager+0x58,index,4);add(g,manager+0x68,count,4);add(g,manager+0x60,list)
+   add(g,list+index*4,unit,4)
+  else index=0;unit=readInteger(manager+0x70);add(g,manager+0x70,unit,4) end
+  if not unit or unit&lt;0 then return end
+  local view,vid,visible
+  for o,identity in pairs(b.views) do
+   if b.live(o)~=identity or not b.isa(o,'CPP_VM_BtlCmd') then b.views[o]=nil
+   elseif readPointer(o+0x68)==asset then
+    local v=readBytes(o+0x199,1)
+    if v and v&lt;=1 and (state==0 and v==1 or state==1 and o==b.activeView and b.live(o)==b.activeViewIdentity) then
+     if view then return end;view=o;visible=v
+    end
+   end
+  end
+  if not view then return nil,'missing-command-view' end
+  vid=b.live(view,false,g)
+  add(g,view+0x68,asset);add(g,view+0x199,visible,1)
+  if state==0 then b.activeView=view;b.activeViewIdentity=vid end
+  return {world=world,unit=unit,state=state,commandType=typ,phase=phase,view=view,guards=g,
+   key=world..'/'..mid..'/'..vid..'/'..unit..'/'..(index+typ*0x1000000)}
+ end
+ return b
+end
+
+local function grantMagitekKey()
+ assert(not (_G.FFRS_MAGITEK_KEY and _G.FFRS_MAGITEK_KEY.running),'Key grant already pending')
+local s=connect();local b=battleObjects(s);battleDirectLinks(s,b).refresh()
+local world=readPointer(s.base+0x9AA0540);local ui
+for o in pairs(b.interfaces)do if readPointer(o+32)==world then ui=o end end
+assert(ui and readBytes(ui+0x80,1)==0,'Wait outside battle')
+local function inventory()
+ local p,n=readPointer(s.save+0xA8),readInteger(s.save+0xB0);assert(n&gt;=0 and n&lt;=5000)
+ local out={};for i=0,n-1 do local id,qty=readInteger(p+i*8),readInteger(p+i*8+4);assert(id and qty and not out[id]);out[id]=qty end;return out
+end
+local expected=inventory();local old=expected[29500] or 0;if old&gt;=1 then b.clear();showMessage('已持有魔導裝甲之鑰，未新增。請在遊戲道具介面使用來切換外觀。');return end
+checkCode(s.base+0x5107500,{0x48,0x89,0x5C,0x24,0x08,0x57,0x48,0x83,0xEC,0x20,0x8B,0xDA,0x8B,0xF9})
+local list=getAddressList();for i=0,list.Count-1 do if list[i].ID==7 or list[i].ID==8 then list[i].Active=false end end
+local thread=createGameThread(s);local t=createTimer(nil,false);t.Interval=250;local start=getTickCount()
+local run={running=true,status='Waiting for game foreground'}
+_G.FFRS_MAGITEK_KEY=run
+local function report(text)run.status=text;print('FFRS Magitek Key: '..text)end
+local function stop()
+ if not run.running then return end
+ run.running=false;t.Enabled=false;t.destroy();pcall(thread.stop);b.clear()
+end
+run.stop=stop
+t.OnTimer=function()
+ local ok,err=pcall(function()
+  assert(getTickCount()-start&lt;120000,'Timed out without grant')
+  if executeCodeEx(0,3000,getAddressSafe('user32.GetForegroundWindow'))~=thread.hwnd then return end
+  assert(getOpenedProcessID()==s.pid and readPointer(s.base+0x9AA0540)==world and readPointer(s.manager+0x60)==s.save and readBytes(ui+0x80,1)==0,'Context changed')
+  local before=inventory();for id,q in pairs(expected)do assert(before[id]==q)end;for id,q in pairs(before)do assert(expected[id]==q)end
+  local g={};for _,o in ipairs({world,s.save,s.manager,ui})do assert(b.live(o,false,g))end
+  g[#g+1]={s.base+0x9AA0540,world};g[#g+1]={s.manager+0x60,s.save};g[#g+1]={ui+0x80,0,1}
+  local gil=readInteger(s.save+0x28)
+  assert(thread.call(s.base+0x5107500,29500,1,g),'Call rejected')
+  local after=inventory();expected[29500]=old+1
+  for id,q in pairs(expected)do assert(after[id]==q,'Inventory readback mismatch')end
+  for id,q in pairs(after)do assert(expected[id]==q,'Unexpected item change')end
+  assert(readInteger(s.save+0x28)==gil,'Gil changed')
+  report('SUCCESS: Magitek Armor Key 29500 '..old..' -&gt; '..after[29500]..'; other inventory and Gil unchanged');stop();showMessage('魔導裝甲之鑰已加入 1 把。取得陸行鳥後，可在遊戲道具介面使用來切換外觀。')
+ end)
+ if not ok then report('ERROR: '..tostring(err));stop()end
+end
+t.Enabled=true
+
+end
+
 
 local s=connect()
 local choices=inventoryChoices(s)
-assert(#choices&gt;0,'No supported owned items found')
+local keyCount=0
+for i=0,s.count-1 do
+ if readInteger(s.inventory+i*8)==29500 then keyCount=readInteger(s.inventory+i*8+4) end
+end
+choices[#choices+1]={id=29500,name='Magitek Armor Key / 魔導裝甲之鑰',quantity=keyCount,special=true}
 local list=createStringlist()
 for _,item in ipairs(choices) do list.add(string.format('%s | ID %d | 持有 %d',item.name,item.id,item.quantity)) end
-local ok,index=pcall(showSelectionList,'修改已持有道具','選擇道具（English / 繁體中文）；重要道具與未持有道具不在此清單。',list,false)
+local ok,index=pcall(showSelectionList,'道具修改／取得鑰匙','一般道具限已持有；魔導裝甲之鑰可補足 1 把，其他重要道具不列入。',list,false)
 list.destroy()
 if not ok then error(index) end
 if index==nil or index&lt;0 then return end
 local item=assert(choices[index+1],'Invalid item selection')
+if item.special then grantMagitekKey();return end
 local answer=inputQuery('設定道具數量',item.name..'（ID '..item.id..'），目前 '..item.quantity..'。輸入 1–99：',tostring(item.quantity))
 if not answer then return end
 local target=tonumber(answer)
@@ -1102,6 +1701,12 @@ showMessage(item.name..'：'..item.quantity..' → '..target..'。請重開道�
 
 {$asm}
 [DISABLE]
+{$lua}
+if syntaxcheck then return end
+local run=_G.FFRS_MAGITEK_KEY
+if run and run.running then run.status='Cancelled';run.stop() end
+
+{$asm}
 </AssemblerScript>
     </CheatEntry>
     <CheatEntry>
