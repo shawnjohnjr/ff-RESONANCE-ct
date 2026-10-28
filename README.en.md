@@ -23,6 +23,7 @@ For Steam **build 24250053**. Tested on macOS with standard CrossOver and Window
 | 13 | Automatic map speed: on foot 3x / mounted 3.5x; optional one-shot multipliers |
 | 14 | Select a character and set permanent stat bonuses; undo the last edit |
 | 15 | Fill the entire battle party’s Limit gauges once per battle, including unlocked extra bars, without popups |
+| 16 | Enemy strength: 3× HP and 1.5× base Attack / Intelligence |
 
 Entries are independent and disabled by default. Entries 01–06 run once, without freezing values; unchecking does not undo changes. Uncheck and recheck to run them again. Entries 07 and 08 run while checked and can be disabled separately. Their shared callback is removed when both are disabled.
 
@@ -361,3 +362,15 @@ The first live CrossOver battle verified Rain 50→200, Nichol 65→200, Sakura 
 The corrected version passed live turn-transition and next-battle tests: unused gauges remain full after an ordinary attack, Limit use consumes the gauge without immediately refilling it, and the next battle refills the party without retoggling. The fix synchronizes the command resource snapshot and the live Limit value. Game-exit behavior for entry 15 has not been separately tested.
 
 Maintainers: see the [version migration guide (with English checklist)](docs/version-migration.md) and [Limit rollback investigation](docs/party-limit-investigation.md).
+
+## Enemy strength (entry 16)
+
+Enable on the map before entering battle. This changes loaded enemy and boss definitions: HP ×3 and base Attack / Intelligence ×1.5, rounded to the nearest integer. Defense, speed, rewards, player characters, and visions are unchanged.
+
+These changes apply alongside the selected in-game difficulty, including Expert. In a live Expert test, one enemy's HP increased from 21,600 to 64,800 and its base Attack / Intelligence from 335 to 503. Multiplying base offensive stats does not guarantee the same multiplier for final damage.
+
+Leave enabled for subsequent battles. Values are not multiplied again each turn, and this does not continuously heal enemies. Toggle outside battle: the source definitions affect newly spawned enemies, rather than immediately updating existing actors. Disabling validates row identities and expected modified values before restoring the captured baseline. Expired data or external edits stop restoration and retain an error status to avoid overwriting unknown data. Re-enable after restarting the game.
+
+Only process memory is changed; game files and CrossOver / MGVF settings are untouched. The plan covers 596 enemy and boss definitions, not 596 individually tested encounters.
+
+Live checks verified boosted stats for two enemy types, no compounding across turns, and no healing of wounded enemies. Disabling on the map restored all 643 source rows byte-for-byte. A newly spawned enemy in the next battle also matched its captured original base HP, Attack, and Intelligence.

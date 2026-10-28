@@ -117,3 +117,18 @@ unique IDs, not character IDs. Only the Limit field is synchronized; HP/MP and
 other snapshot state remain untouched. This preserves once-per-battle behavior
 without an infinite-gauge hook. See the linked investigation for observed native
 restore sites and the failed approaches that led to this design.
+
+## 第 16 項：敵人來源定義 / Enemy definition scaling
+
+- `enemy_strength_plan.lua`：純計算，依分類選 Enemy=2 / Boss=3；MaxHitPoint +0x58、Attack +0x64、Intelligence +0x6C。這些分類與偏移都是版本相依資料，新版須重新核對 SDK 與實機。
+- `enemy_strength.lua`：動態取得 UNIT_PARAMETER 表格，保留原始數值；寫入與還原前檢查物件生命週期、資料列 ID、分類與預期數值。不得把某次執行取得的表格或列地址寫進正式程式。
+- 資料流：來源表格 → 新生成的戰鬥角色 → 難度及戰鬥效果。表格欄位不是畫面上的最終 HP 或最終傷害；原生專家模式必須保留。只修改三個指定欄位，不修改難度／獎勵／防禦。
+- 回歸：純計算測試 → 地圖啟用與所有資料列差異核對 → 同種敵人生成前後 → 換回合無累加、受傷不補回 → 地圖關閉逐位元組還原 → 下一場恢復原生難度 → 重複啟用不累乘。
+- 失效時不得盲目還原。調查 `FFRS_ENEMY_STRENGTH.status` / `.error`；確認仍為同一程序與同一資料表，再決定修復方式。
+
+Entry 16 scales loaded source definitions, not final combat damage. Revalidate the
+category enum, three field offsets, table layout, and actor generation path for
+new builds. Preserve native difficulty settings. Keep the pure plan separate
+from memory access and retain an immutable baseline for restoration. Regression
+tests must cover turn transitions, wounded enemies, disable/restore, subsequent
+spawns, and repeated activation; do not rely solely on immediate readback.
