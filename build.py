@@ -123,7 +123,7 @@ TABLE_ENTRIES = (
         disable_source="disable_party_limit.lua",
     ),
     TableEntry(
-        16, "16 敵人強化（HP 3 倍／基礎攻擊與魔力 1.5 倍）",
+        16, "16 敵人強化（HP 3 倍／基礎攻擊與魔力 3 倍）",
         "enable_enemy_strength.lua",
         helper_sources=("unreal_tables.lua", "battle_direct_links.lua", "battle_objects.lua",
                         "enemy_strength_plan.lua", "enemy_strength.lua"),

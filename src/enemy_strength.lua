@@ -59,6 +59,6 @@ local function startEnemyStrength(s)
   for _,p in ipairs(touched)do if readInteger(p.row.address+p.offset)==p.after then writeInteger(p.row.address+p.offset,p.before)end end
   error(err)
  end
- run.active=true;run.status='Enemy definitions strengthened: HP x3, Attack/Intelligence x1.5'
+ run.active=true;run.status='Enemy definitions strengthened: HP x3, Attack/Intelligence x3'
  return run
 end

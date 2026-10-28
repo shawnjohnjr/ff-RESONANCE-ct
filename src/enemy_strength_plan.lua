@@ -3,8 +3,8 @@
 -- Attack/Intelligence scale the offensive base stats, not final damage.
 local ENEMY_STRENGTH_FIELDS={
  {name='MaxHitPoint',offset=0x58,multiplier=3},
- {name='Attack',offset=0x64,multiplier=1.5},
- {name='Intelligence',offset=0x6C,multiplier=1.5},
+ {name='Attack',offset=0x64,multiplier=3},
+ {name='Intelligence',offset=0x6C,multiplier=3},
 }
 local function enemyStrengthPlan(rows)
  local plan,seen={},{}

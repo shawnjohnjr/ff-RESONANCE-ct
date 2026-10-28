@@ -23,7 +23,7 @@ For Steam **build 24250053**. Tested on macOS with standard CrossOver and Window
 | 13 | Automatic map speed: on foot 3x / mounted 3.5x; optional one-shot multipliers |
 | 14 | Select a character and set permanent stat bonuses; undo the last edit |
 | 15 | Fill the entire battle party’s Limit gauges once per battle, including unlocked extra bars, without popups |
-| 16 | Enemy strength: 3× HP and 1.5× base Attack / Intelligence |
+| 16 | Enemy strength: 3× HP and 3× base Attack / Intelligence |
 
 Entries are independent and disabled by default. Entries 01–06 run once, without freezing values; unchecking does not undo changes. Uncheck and recheck to run them again. Entries 07 and 08 run while checked and can be disabled separately. Their shared callback is removed when both are disabled.
 
@@ -79,7 +79,7 @@ The following equipment from the [Twelve Arms / arena rewards guide](https://for
 
 Also includes **Circlet of Enlightenment / 解脫之輪 (12069)**, topped up to at least 8 in inventory. It adds 5% Limit gauge per turn and is used in the Nichol build below. Owning 1 adds 7; owning 8 or more adds nothing.
 
-Ribbon and Super Ribbon remain separate items. The Shinryu reward mentioned in the guide is excluded from this equipment pack. Names use the game's English and Traditional Chinese localization rather than literal translations from Japanese.
+Ribbon and Super Ribbon remain separate items. The guide’s Shinryu reward is **Dragon Seal / 龍之紋章 (12102)**, now included with a minimum of 1 in inventory (nothing added if already owned). Equip it to prevent encounters; after obtaining it, entry 04 can edit its quantity. Live testing confirmed that one copy was added without changing other items or Gil. It could be equipped normally, and walking through an encounter area produced no encounters. Names use the game's English and Traditional Chinese localization rather than literal translations from Japanese.
 
 This is a general endgame selection based on stats, effects, and equipment compatibility. Specialized builds may suit particular battles better. Three armor categories are provided so each character can choose a compatible type.
 
@@ -365,12 +365,14 @@ Maintainers: see the [version migration guide (with English checklist)](docs/ver
 
 ## Enemy strength (entry 16)
 
-Enable on the map before entering battle. This changes loaded enemy and boss definitions: HP ×3 and base Attack / Intelligence ×1.5, rounded to the nearest integer. Defense, speed, rewards, player characters, and visions are unchanged.
+Enable on the map before entering battle. This changes loaded enemy and boss definitions: HP ×3 and base Attack / Intelligence ×3, rounded to the nearest integer. Defense, speed, rewards, player characters, and visions are unchanged.
 
-These changes apply alongside the selected in-game difficulty, including Expert. In a live Expert test, one enemy's HP increased from 21,600 to 64,800 and its base Attack / Intelligence from 335 to 503. Multiplying base offensive stats does not guarantee the same multiplier for final damage.
+These changes apply alongside the selected in-game difficulty, including Expert. A base Attack / Intelligence value of 335 becomes 1,005. Multiplying base offensive stats does not guarantee the same multiplier for final damage.
 
 Leave enabled for subsequent battles. Values are not multiplied again each turn, and this does not continuously heal enemies. Toggle outside battle: the source definitions affect newly spawned enemies, rather than immediately updating existing actors. Disabling validates row identities and expected modified values before restoring the captured baseline. Expired data or external edits stop restoration and retain an error status to avoid overwriting unknown data. Re-enable after restarting the game.
 
 Only process memory is changed; game files and CrossOver / MGVF settings are untouched. The plan covers 596 enemy and boss definitions, not 596 individually tested encounters.
 
-Live checks verified boosted stats for two enemy types, no compounding across turns, and no healing of wounded enemies. Disabling on the map restored all 643 source rows byte-for-byte. A newly spawned enemy in the next battle also matched its captured original base HP, Attack, and Intelligence.
+Live checks of the previous 1.5× offensive-stat version verified boosted stats for two enemy types, no compounding across turns, and no healing of wounded enemies. Disabling on the map restored all 643 source rows byte-for-byte. A newly spawned enemy in the next battle also matched its captured original base HP, Attack, and Intelligence.
+
+Attack and Intelligence were increased to 3× as requested; this multiplier has not been separately live-tested.
