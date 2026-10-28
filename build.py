@@ -115,6 +115,13 @@ TABLE_ENTRIES = (
                         "battle_direct_links.lua", "battle_objects.lua", "character_base_stats.lua", "character_base_stat_action.lua"),
         disable_source="disable_base_stats.lua",
     ),
+    TableEntry(
+        15, "15 每場全員極限技槽補滿（含已解鎖擴充槽／無彈窗）",
+        "enable_party_limit.lua",
+        helper_sources=("game_thread_dispatch.lua", "battle_direct_links.lua", "battle_objects.lua", "battle_calls.lua",
+                        "memory_checks.lua", "party_limit_state.lua", "party_limit_roster.lua", "party_limit_snapshot.lua", "party_limit_runtime.lua"),
+        disable_source="disable_party_limit.lua",
+    ),
 )
 
 
@@ -157,8 +164,8 @@ def assemble_script(entry, connection, gameplay_helpers):
     )
 
 
-def build_table():
-    validate_entries(TABLE_ENTRIES)
+def build_table(entries_to_build=TABLE_ENTRIES):
+    validate_entries(entries_to_build)
     connection = read_source("game_connection.lua")
     gameplay_helpers = (
         read_source("item_names.lua") + "\n"
@@ -167,7 +174,7 @@ def build_table():
 
     root = ET.Element("CheatTable", CheatEngineTableVersion="45")
     entries = ET.SubElement(root, "CheatEntries")
-    for entry in TABLE_ENTRIES:
+    for entry in entries_to_build:
         node = ET.SubElement(entries, "CheatEntry")
         ET.SubElement(node, "ID").text = str(entry.entry_id)
         ET.SubElement(node, "Description").text = f'"{entry.title}"'
@@ -184,6 +191,8 @@ def build_table():
 def main():
     table = build_table()
     table.write(OUTPUT_FILE, encoding="utf-8", xml_declaration=True)
+    standalone = ROOT / "FFRS_Party_Limit_Auto.CT"
+    build_table(tuple(e for e in TABLE_ENTRIES if e.entry_id == 15)).write(standalone, encoding="utf-8", xml_declaration=True)
     print(f"Built {OUTPUT_FILE.name} ({len(TABLE_ENTRIES)} entries)")
 
 

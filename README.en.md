@@ -22,6 +22,7 @@ For Steam **build 24250053**. Tested on macOS with standard CrossOver and Window
 | 12 | Unlock Fel Meteor for Dark Fina once; skip if already learned |
 | 13 | Automatic map speed: on foot 3x / mounted 3.5x; optional one-shot multipliers |
 | 14 | Select a character and set permanent stat bonuses; undo the last edit |
+| 15 | Fill the entire battle party’s Limit gauges once per battle, including unlocked extra bars, without popups |
 
 Entries are independent and disabled by default. Entries 01–06 run once, without freezing values; unchecking does not undo changes. Uncheck and recheck to run them again. Entries 07 and 08 run while checked and can be disabled separately. Their shared callback is removed when both are disabled.
 
@@ -346,3 +347,17 @@ Disable entries 07 and 08 and stay in a map menu. After entering a value, return
 Separate modules handle bonus data/validation, native execution and the selection interface. The native bonus setter is followed by character recalculation and persistent-effect rebuilding to prevent equipment/ability effects from stacking on repeated refreshes. AP uses `EquipCost`, not the separate `AP` enum member.
 
 Live CrossOver tests on Fina passed small increases and restoration for all eight stats: HP 5708→5709→5708, MP 1099→1101→1099, Strength 420→421→420, Vitality 410→411→410, Magic 586→587→586, Spirit 639→640→639, Speed 441→442→441, AP 516→517→516. The MP difference includes the current multipliers. All tested permanent bonuses were restored. Save/reload persistence for this feature has not been tested.
+
+### Automatic party Limit refill each battle
+
+Leave entry 15 checked. At a friendly command screen in each battle, it fills every eligible party character to that character’s actual Limit cap, including unlocked extra bars. It does not change caps or unlock bars, and excludes enemies and companion visions. Knocked-out characters wait until eligible.
+
+Each character is filled once per battle. Spending Limit consumes it normally; it is not immediately replenished. The next battle works without toggling the entry. Background, paused and event scenes wait; unchecking stops the feature. No completion/error popup or Lua output window is opened. Diagnostic status is stored in `FFRS_PARTY_LIMIT.status` / `error`. Reattach and re-enable after restarting the game.
+
+A [standalone CT](FFRS_Party_Limit_Auto.CT) contains only this switch. Use either it or the full table. Original entry 11 keeps its one-shot current-character behavior and original notification; it is unnecessary when using entry 15.
+
+The first live CrossOver battle verified Rain 50→200, Nichol 65→200, Sakura 50→200 and Archwitch Fina 0→200. The user confirmed all four were full with no popup. All four actual caps were 200; a cap above 200 has not been tested.
+
+The corrected version passed live turn-transition and next-battle tests: unused gauges remain full after an ordinary attack, Limit use consumes the gauge without immediately refilling it, and the next battle refills the party without retoggling. The fix synchronizes the command resource snapshot and the live Limit value. Game-exit behavior for entry 15 has not been separately tested.
+
+Maintainers: see the [version migration guide (with English checklist)](docs/version-migration.md) and [Limit rollback investigation](docs/party-limit-investigation.md).

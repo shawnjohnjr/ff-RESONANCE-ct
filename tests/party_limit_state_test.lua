@@ -1,0 +1,13 @@
+local root=...
+local file=assert(io.open(root..'/src/party_limit_state.lua'));local source=file:read('*a');file:close()
+local factory=assert(load(source..'\nreturn partyLimitState'))()
+local s=factory();s.enter('battle1');assert(s.pending('rain'))
+s.mark('rain');s.mark('fina');s.enter('battle1')
+assert(not s.pending('rain') and not s.pending('fina'),'Commands must not re-arm')
+assert(s.pending('revived-party-member'))
+s.reset();s.enter('battle1');assert(s.pending('rain'),'Same reused battle objects must re-arm after leaving battle')
+s.mark('rain');s.enter('battle2');assert(s.pending('rain'),'New battle identity must re-arm')
+assert(s.battles==3 and s.refills==3)
+local f=assert(io.open(root..'/src/party_limit_runtime.lua'));local runtime=f:read('*a');f:close()
+assert(not runtime:find('showMessage',1,true) and not runtime:find('print(',1,true),'No focus-stealing notifications')
+print('party limit state tests passed')
