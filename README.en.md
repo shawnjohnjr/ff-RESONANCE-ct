@@ -376,3 +376,7 @@ Only process memory is changed; game files and CrossOver / MGVF settings are unt
 Live checks of the previous 1.5× offensive-stat version verified boosted stats for two enemy types, no compounding across turns, and no healing of wounded enemies. Disabling on the map restored all 643 source rows byte-for-byte. A newly spawned enemy in the next battle also matched its captured original base HP, Attack, and Intelligence.
 
 Attack and Intelligence were increased to 3× as requested; this multiplier has not been separately live-tested.
+
+## Read-only Tablet Shard research
+
+[Controlled before/after detection and memory layout](docs/tablet-pickup-detection.en.md), with a standalone read-only CE exporter and Python comparison tool. One Colosseum shard is precisely verified; this is not yet a complete 99-shard tracker.
