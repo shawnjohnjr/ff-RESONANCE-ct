@@ -1,0 +1,15 @@
+{
+  "build": 24250053,
+  "complete": false,
+  "tablets": [
+    {
+      "map_id": 2016,
+      "unique_id": 2,
+      "item_id": 25004,
+      "area": "Grandshelt Colosseum",
+      "location": "West end of the entrance path",
+      "actor_class": "BP_MapGimmick_FieldItem_Medal_C",
+      "verification": "Controlled pickup: IsOpen 0 -> 1, IsUnlock 0 -> 1, shard inventory +1; no event-flag changes in the recorded comparison."
+    }
+  ]
+}
