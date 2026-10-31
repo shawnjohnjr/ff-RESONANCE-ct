@@ -2471,7 +2471,7 @@ showMessage(table.concat(report,'\n')..'\n請重開角色選單核對，確認�
     </CheatEntry>
     <CheatEntry>
       <ID>6</ID>
-      <Description>"06 全角色終盤裝備包（補足背包）"</Description>
+      <Description>"06 全角色終盤裝備包（補足背包／留意十二武具挑戰）"</Description>
       <VariableType>Auto Assembler Script</VariableType>
       <AssemblerScript>[ENABLE]
 {$lua}
@@ -3247,7 +3247,7 @@ end
 local expected=inventoryMap(s)
 local counts={0,0,0}
 for _,v in ipairs(pack) do counts[v[3]]=counts[v[3]]+1 end
-local lines={string.format('%d 種角色武器各至少 1 件；%d 種防具、%d 種飾品通常各至少 8 件（龍之紋章僅補足 1 件）。',counts[1],counts[2],counts[3]),'只補足背包數量，不自動裝備，不解鎖角色。',''}
+local lines={string.format('%d 種角色武器各至少 1 件；%d 種防具、%d 種飾品通常各至少 8 件（龍之紋章僅補足 1 件）。',counts[1],counts[2],counts[3]),'只補足背包數量，不自動裝備，不解鎖角色。','【十二武具／成就提醒】本包包含十二武具的「改」版。持有一般版或改版可能使武具之間對應台座不顯示「調查」，無法正常開始挑戰；直接加入背包不保證解鎖取得武具的成就。','建議先完成十二武具挑戰與成就，再領取本包。若已受影響，先卸下相關裝備，再用第 21 項暫時清空一般版／改版（保留古老武具），完成挑戰後可用第 22 項還原。',''}
 for _,v in ipairs(pack) do
  local row=assert(catalog[v[1]],'Equipment missing from this build')
  assert(readBytes(row+0x70,1)==3 and readBytes(row+0x80,1)==v[3] and readBytes(row+0x81,1)==v[4],'Equipment category mismatch')
@@ -11341,6 +11341,2834 @@ local r=_G.FFRS_ENEMY_STRENGTH
 if r and r.stop then r.stop()end
 
 {$asm}
+</AssemblerScript>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>17</ID>
+      <Description>"17 古老武具十二件（各補足 1 件／一次）"</Description>
+      <VariableType>Auto Assembler Script</VariableType>
+      <AssemblerScript>[ENABLE]
+{$lua}
+if syntaxcheck then return end
+-- FFRS retail Steam build 24250053. Read-only lookup, no injected game calls.
+-- SDK reference: PolarWizard/final-fantasy-resonance-fix (MIT).
+local function connect(battleOnly)
+ local pid=assert(getProcessIDFromProcessName('FFRS-Win64-Shipping.exe'),'Resonance is not running')
+ if getOpenedProcessID()~=pid then openProcess(pid) end
+ local base=assert(getAddressSafe('FFRS-Win64-Shipping.exe'),'Game module unavailable')
+ local pe=base+readInteger(base+0x3c)
+ assert(readInteger(pe+8)==0x6A586B2F and readInteger(pe+0x50)==503013376,'Unsupported game build; stop and revalidate')
+ local pool=base+0x9CA1280
+ local names={}
+ local blocks=readInteger(pool+8)
+ assert(blocks and blocks&gt;=0 and blocks&lt;8192,'Invalid name pool')
+ local function name(id)
+  if not id or id&lt;0 then return '?' end
+  if names[id] then return names[id] end
+  local block=math.floor(id/65536);local off=(id%65536)*2
+  if block&gt;blocks then blocks=readInteger(pool+8) or -1 end
+  if block&gt;blocks or blocks&gt;=8192 then return '?' end
+  local p=readPointer(pool+0x10+block*8);if not p or p&lt;65536 then return '?' end
+  local h=readSmallInteger(p+off);if not h then return '?' end
+  if h&lt;0 then h=h+65536 end
+  local len=math.floor(h/64)
+  if len&gt;1023 then return '?' end
+  local s
+  if h%2==1 then s=readString(p+off+2,len*2,true)
+  else local b=readBytes(p+off+2,len,true);s=b and string.char(table.unpack(b)) end
+  names[id]=s or '?';return names[id]
+ end
+ assert(name(0)=='None','Name pool does not match this game')
+ local function oname(o) return o and o&gt;65536 and name(readInteger(o+0x18)) or '?' end
+ local classes={}
+ local function cname(o)
+  local c=o and readPointer(o+0x10)
+  if not c or c&lt;65536 then return '?' end
+  if not classes[c] then classes[c]=oname(c) end
+  return classes[c]
+ end
+ local world=readPointer(base+0x9AA0540)
+ assert(world and world&gt;65536 and cname(world)=='World','Wait for a loaded world')
+ local gi=readPointer(world+0x228)
+ assert(gi and gi&gt;65536,'Wait for the game instance')
+ local g=base+0x9D84DD0;local count=readInteger(g+0x14);local chunks=readPointer(g)
+ assert(count and count&gt;0 and count&lt;2000000 and chunks and chunks&gt;65536,'Invalid object array')
+ local chunkCount=readInteger(g+0x1c)
+ assert(chunkCount and chunkCount&gt;0 and chunkCount&lt;=math.ceil(2000000/65536),'Invalid object chunks')
+ local function at(i)
+  local currentCount=battleOnly and readInteger(g+0x14) or count
+  if not i or not currentCount or currentCount&gt;2000000 or i&lt;0 or i&gt;=currentCount then return nil end
+  local ch=readPointer(chunks+math.floor(i/65536)*8)
+  return ch and ch&gt;65536 and readPointer(ch+(i%65536)*24) or nil
+ end
+ -- Battle automation does not use inventory tables or save-data writes.
+ if battleOnly then return {at=at,oname=oname,cname=cname,name=name,pid=pid,base=base} end
+ local function ismanager(o)
+  if not o or o&lt;65536 then return false end
+  local flags=readInteger(o+8)
+  return flags and (flags &amp; 0x10)==0 and cname(o)=='CPP_MuchaSaveDataManager' and readPointer(o+0x20)==gi
+ end
+ local cached=_G.FFRS_CT_SESSION
+ local manager,index
+ local tables={}
+ if cached and cached.pid==pid and cached.base==base and at(cached.index)==cached.manager and ismanager(cached.manager) and cached.tables then
+  manager,index=cached.manager,cached.index
+  tables=cached.tables
+ else
+  for i=0,count-1 do
+   local o=at(i)
+   if o and o&gt;65536 and cname(o)=='DataTable' then
+    local row=readPointer(o+0x28)
+    local rn=oname(row)
+    if rn=='CONSUMABLES_ITEM_DATA' or rn=='EQUIPMENT_ITEM_DATA' or rn=='UNIT_PARAMETER' or rn=='UNIT_LEVEL_PARAMETER_LIST' then
+     tables[#tables+1]={object=o,index=i,row=rn,name=oname(o)}
+    end
+   end
+   if ismanager(o) then assert(not manager,'Multiple active save managers; stop');manager,index=o,i end
+  end
+ end
+ assert(manager,'Active save manager not found; load a save first')
+ local save=readPointer(manager+0x60)
+ assert(save and save&gt;65536 and cname(save)=='CPP_MuchaGameSaveData','Active save data unavailable')
+ local flags=readInteger(save+8);assert(flags and (flags &amp; 0x10)==0,'Default object is not a save')
+ local gil=readInteger(save+0x28)
+ assert(gil and gil&gt;=0 and gil&lt;=2147483647,'Invalid money value')
+ local inv=readPointer(save+0xA8);local n=readInteger(save+0xB0);local cap=readInteger(save+0xB4)
+ assert(n and cap and n&gt;=0 and n&lt;=cap and cap&lt;=100000,'Invalid inventory array')
+ assert(n==0 or (inv and inv&gt;65536),'Invalid inventory pointer')
+ _G.FFRS_CT_SESSION={pid=pid,base=base,manager=manager,index=index,tables=tables}
+ return {at=at,oname=oname,cname=cname,name=name,tables=tables,pid=pid,base=base,manager=manager,save=save,gil=gil,inventory=inv,count=n,capacity=cap}
+end
+
+-- Official item labels from installed Steam build 24250053, en / zh-Hant.
+-- Two untranslated zh-Hant placeholders use explicitly marked provisional translations.
+-- Only item-name strings are included; no descriptions, dialogue, or game assets.
+local itemNames = {
+ [1]={en="Potion",zh="治療劑",kind=1},
+ [2]={en="Hi-Potion",zh="高級治療劑",kind=1},
+ [3]={en="Ether",zh="乙太",kind=1},
+ [4]={en="Phoenix Down",zh="鳳凰尾巴",kind=1},
+ [7]={en="Antidote Herb",zh="解毒草",kind=1},
+ [8]={en="Remedy",zh="萬能藥",kind=1},
+ [9]={en="Knife of Poison",zh="毒匕首",kind=1},
+ [10]={en="Eye Drops",zh="眼藥",kind=1},
+ [11]={en="Smelling Salts",zh="清醒藥",kind=1},
+ [12]={en="Echo Herb",zh="山彥草",kind=1},
+ [13]={en="Unicorn Horn",zh="獨角獸之角",kind=1},
+ [14]={en="X-Potion",zh="至高治療劑",kind=1},
+ [16]={en="Gold Needle",zh="金針",kind=1},
+ [17]={en="Herb of Awakening",zh="提神劑",kind=1},
+ [18]={en="X-Ether",zh="超級乙太",kind=1},
+ [19]={en="Healing Spring",zh="回復之泉",kind=1},
+ [20]={en="Turbo Ether",zh="渦輪乙太",kind=1},
+ [22]={en="Elixir",zh="萬靈藥",kind=1},
+ [23]={en="Megalixir",zh="終極萬靈藥",kind=1},
+ [24]={en="Smoke Bomb",zh="煙霧彈",kind=1},
+ [26]={en="Knife of Blind",zh="失明匕首",kind=1},
+ [27]={en="Knife of Silence",zh="沉默匕首",kind=1},
+ [28]={en="Knife of Confuse",zh="混亂匕首",kind=1},
+ [29]={en="Knife of Paralysis",zh="麻痺匕首",kind=1},
+ [30]={en="Knife of Sleep",zh="睡眠匕首",kind=1},
+ [31]={en="Mist Potion",zh="噴霧治療劑",kind=1},
+ [32]={en="Mist Hi-Potion",zh="噴霧高級治療劑",kind=1},
+ [33]={en="Mist X-Potion",zh="噴霧至高治療劑",kind=1},
+ [34]={en="Mist Ether",zh="噴霧乙太",kind=1},
+ [35]={en="Mist Turbo Ether",zh="噴霧渦輪乙太",kind=1},
+ [36]={en="Mist X-Ether",zh="噴霧超級乙太",kind=1},
+ [37]={en="Phoenix Pinion",zh="鳳凰羽毛",kind=1},
+ [200]={en="Flame Scroll II",zh="火遁卷軸·貳",kind=1},
+ [201]={en="Ice Scroll II",zh="冰遁卷軸·貳",kind=1},
+ [202]={en="Wind Scroll II",zh="風遁卷軸·貳",kind=1},
+ [203]={en="Earth Scroll II",zh="土遁卷軸·貳",kind=1},
+ [204]={en="Lightning Scroll II",zh="雷遁卷軸·貳",kind=1},
+ [205]={en="Water Scroll II",zh="水遁卷軸·貳",kind=1},
+ [206]={en="Shuriken",zh="手裏劍",kind=1},
+ [207]={en="Fuma Shuriken",zh="風魔手裏劍",kind=1},
+ [208]={en="Chef’s Knife",zh="菜刀",kind=1},
+ [209]={en="Flame Scroll I",zh="火遁卷軸·壹",kind=1},
+ [210]={en="Ice Scroll I",zh="冰遁卷軸·壹",kind=1},
+ [211]={en="Wind Scroll I",zh="風遁卷軸·壹",kind=1},
+ [212]={en="Earth Scroll I",zh="土遁卷軸·壹",kind=1},
+ [213]={en="Lightning Scroll I",zh="雷遁卷軸·壹",kind=1},
+ [214]={en="Water Scroll I",zh="水遁卷軸·壹",kind=1},
+ [500]={en="Tent",zh="帳篷",kind=1},
+ [600]={en="Small Golden Shell",zh="金色的小甲殼",kind=1},
+ [601]={en="Golden Shell",zh="金色的甲殼",kind=1},
+ [602]={en="Large Golden Shell",zh="金色的大甲殼",kind=1},
+ [10100]={en="Crimson Saber",zh="深紅烈焰",kind=3},
+ [10101]={en="Bronze Sword",zh="青銅劍",kind=3},
+ [10102]={en="Longsword",zh="長劍",kind=3},
+ [10103]={en="Bladed Shield",zh="劍盾",kind=3},
+ [10104]={en="Knight’s Blade",zh="騎士之劍",kind=3},
+ [10105]={en="Flametongue",zh="熾焰火舌",kind=3},
+ [10106]={en="Icebrand",zh="寒冰烙印",kind=3},
+ [10107]={en="Claymore",zh="闊刃大劍",kind=3},
+ [10108]={en="Kaiser Sword",zh="帝皇之劍",kind=3},
+ [10109]={en="Bastard Sword",zh="變種劍",kind=3},
+ [10110]={en="Blood Sword",zh="嗜血劍",kind=3},
+ [10111]={en="Greatsword",zh="巨劍",kind=3},
+ [10112]={en="Rune Blade",zh="符文刃",kind=3},
+ [10113]={en="Lunar Sword",zh="月之劍",kind=3},
+ [10114]={en="Stagger Blade",zh="石化劍",kind=3},
+ [10115]={en="Soul Sabre",zh="靈魂劍",kind=3},
+ [10116]={en="Sword of Trials",zh="修驗劍",kind=3},
+ [10117]={en="Falchion",zh="彎刃刀",kind=3},
+ [10118]={en="Moon Saber",zh="月華軍刀",kind=3},
+ [10119]={en="Nocturne",zh="夜想曲",kind=3},
+ [10120]={en="Arcana Blade",zh="秘儀之刃",kind=3},
+ [10121]={en="Knight’s Sword",zh="騎士之劍",kind=3},
+ [10122]={en="Ether’s Light",zh="乙太導標",kind=3},
+ [10123]={en="Guardian Sword",zh="守護者之劍",kind=3},
+ [10124]={en="Variable Steel",zh="變形劍",kind=3},
+ [10125]={en="Briar Edge",zh="荊棘劍",kind=3},
+ [10126]={en="Hero’s Blade",zh="勇者之劍",kind=3},
+ [10127]={en="Indomitable",zh="不沉之劍",kind=3},
+ [10128]={en="Flamberge",zh="火焰波刃劍",kind=3},
+ [10129]={en="Malice Breaker",zh="破魔劍",kind=3},
+ [10130]={en="Knight’s Greatsword",zh="王國騎士團的大劍",kind=3},
+ [10190]={en="Save the Vermillion",zh="朱紅守護",kind=3},
+ [10194]={en="Apocalypse",zh="天啓劍",kind=3},
+ [10195]={en="Excalibur",zh="石中劍",kind=3},
+ [10196]={en="Lightbringer",zh="光明使者",kind=3},
+ [10197]={en="Ragnarok+",zh="諸神黃昏·改",kind=3},
+ [10198]={en="Ancient Greatsword",zh="古老的大劍",kind=3},
+ [10199]={en="Ragnarok",zh="諸神黃昏",kind=3},
+ [10200]={en="Shiden",zh="紫電",kind=3},
+ [10201]={en="Nodachi",zh="野太刀",kind=3},
+ [10202]={en="Sakura-Fubuki",zh="櫻吹雪",kind=3},
+ [10203]={en="Ashura",zh="阿修羅",kind=3},
+ [10204]={en="Tsukiyo no Tachi",zh="月夜太刀",kind=3},
+ [10205]={en="Kuki",zh="九鬼",kind=3},
+ [10206]={en="Hyosetsumaru",zh="冰雪丸",kind=3},
+ [10207]={en="Dodanuki",zh="同田貫",kind=3},
+ [10208]={en="Uchigatana",zh="打刀",kind=3},
+ [10209]={en="Samurai’s Katana",zh="武士刀",kind=3},
+ [10210]={en="Rasetsu",zh="羅剎",kind=3},
+ [10211]={en="Hototogisu",zh="不如歸",kind=3},
+ [10212]={en="Shiranui",zh="不知火",kind=3},
+ [10213]={en="Kogarasumaru",zh="小烏丸",kind=3},
+ [10214]={en="Kiku-Ichimonji",zh="菊一文字",kind=3},
+ [10215]={en="Kotetsu",zh="虎徹",kind=3},
+ [10216]={en="Osafune",zh="備前長船",kind=3},
+ [10217]={en="Laserblade",zh="雷射劍",kind=3},
+ [10218]={en="Astral Blade",zh="星芒之刃",kind=3},
+ [10219]={en="Reito",zh="靈刀",kind=3},
+ [10220]={en="Genmato",zh="幻魔刀",kind=3},
+ [10221]={en="Rikudo",zh="六道",kind=3},
+ [10222]={en="Hasaito",zh="破碎刀",kind=3},
+ [10223]={en="Sundering Odachi",zh="削鎧大太刀",kind=3},
+ [10224]={en="Kikokusenga",zh="鬼哭穿牙",kind=3},
+ [10225]={en="Kumobashiri",zh="雲走",kind=3},
+ [10226]={en="Guardbreaker",zh="破防者",kind=3},
+ [10227]={en="Iwakirimaru",zh="岩切丸",kind=3},
+ [10228]={en="Vibroblade",zh="超高周波刀",kind=3},
+ [10229]={en="Murasame",zh="村雨",kind=3},
+ [10230]={en="Gorgon Sword",zh="蛇髮女妖之劍",kind=3},
+ [10231]={en="Carbide Blade",zh="超硬合金刀",kind=3},
+ [10290]={en="Shisui",zh="止水",kind=3},
+ [10294]={en="Mutsunokami",zh="陸奧守",kind=3},
+ [10295]={en="Masamune",zh="正宗",kind=3},
+ [10296]={en="Murakumo",zh="天叢雲劍",kind=3},
+ [10297]={en="Sasuke’s Blade+",zh="佐助刀·改",kind=3},
+ [10298]={en="Ancient Katana",zh="古老的刀",kind=3},
+ [10299]={en="Sasuke’s Blade",zh="佐助刀",kind=3},
+ [10300]={en="Reincarnation",zh="輪迴之翼",kind=3},
+ [10301]={en="Silver Bow",zh="銀弓",kind=3},
+ [10302]={en="Floral Arc",zh="花之弓",kind=3},
+ [10303]={en="Fujin’s Bow",zh="風神之弓",kind=3},
+ [10304]={en="Rune Bow",zh="符文之弓",kind=3},
+ [10305]={en="Midnight Longbow",zh="夜之長弓",kind=3},
+ [10306]={en="Shortbow",zh="短弓",kind=3},
+ [10307]={en="Longbow",zh="長弓",kind=3},
+ [10308]={en="Elfin Bow",zh="精靈弓",kind=3},
+ [10309]={en="Greatbow",zh="強弓",kind=3},
+ [10310]={en="Crescent Bow",zh="新月弓",kind=3},
+ [10311]={en="Composite Bow",zh="複合弓",kind=3},
+ [10312]={en="Loxley Bow",zh="俠盜弓",kind=3},
+ [10313]={en="Oracle Bow",zh="神諭之弓",kind=3},
+ [10314]={en="Gandiva",zh="鋼迪瓦之弓",kind=3},
+ [10315]={en="Compound Bow",zh="機械弓",kind=3},
+ [10316]={en="Rock Piercer",zh="削岩弓",kind=3},
+ [10317]={en="Heavy Crossbow",zh="重弩",kind=3},
+ [10318]={en="Ballista",zh="破城弓",kind=3},
+ [10319]={en="Deafening Bow",zh="轟射弓",kind=3},
+ [10320]={en="Cure Drop",zh="治癒露滴",kind=3},
+ [10321]={en="Seraphim Bow",zh="熾天使之弓",kind=3},
+ [10322]={en="Moon Rain",zh="月華之雨",kind=3},
+ [10323]={en="Ydalir",zh="伊奇瓦爾弓",kind=3},
+ [10324]={en="Rune Arch",zh="符文弓手",kind=3},
+ [10325]={en="Kagura Longbow",zh="神樂大弓",kind=3},
+ [10326]={en="Bow of the Hawk",zh="鷹之弓",kind=3},
+ [10327]={en="Spellblade’s Bow",zh="魔鬥士大弓",kind=3},
+ [10390]={en="Elysium",zh="艾利西昂",kind=3},
+ [10395]={en="Yoichi Bow",zh="與一弓",kind=3},
+ [10396]={en="Faerie Bow",zh="妖精之弓",kind=3},
+ [10397]={en="Artemis Bow+",zh="狩神弓·改",kind=3},
+ [10398]={en="Ancient Bow",zh="古老的弓",kind=3},
+ [10399]={en="Artemis Bow",zh="狩神弓",kind=3},
+ [10400]={en="Mechabo Hammer",zh="機械鳥之槌",kind=3},
+ [10401]={en="Bronze Hammer",zh="青銅槌",kind=3},
+ [10402]={en="Cross Pein Hammer",zh="十字鎚",kind=3},
+ [10403]={en="Sledgehammer",zh="粉碎鎚",kind=3},
+ [10404]={en="Iron Hammer",zh="鋼鐵鎚",kind=3},
+ [10405]={en="Heroic Hammer",zh="勇氣鎚",kind=3},
+ [10406]={en="Slam Hammer",zh="重擊鎚",kind=3},
+ [10407]={en="Nightbreaker",zh="暗夜鎚",kind=3},
+ [10408]={en="Warpick",zh="巨鎚",kind=3},
+ [10409]={en="Star Shatterer　",zh="碎星鎚　",kind=3},
+ [10410]={en="Dreadwing Mallet",zh="怪鳥大翼鎚",kind=3},
+ [10411]={en="Morning Star",zh="晨星槌",kind=3},
+ [10412]={en="Arc Hammer",zh="弧光鎚",kind=3},
+ [10413]={en="Divine Mallet",zh="聖印大鎚",kind=3},
+ [10414]={en="Demon’s Maul",zh="惡魔大鎚",kind=3},
+ [10415]={en="Piercing Mace",zh="必殺鎚矛",kind=3},
+ [10416]={en="Bullseye Mace",zh="標靶棒",kind=3},
+ [10417]={en="Clown Hammer",zh="嗶嗶鎚",kind=3},
+ [10418]={en="Inquisitor’s Gavel",zh="審問官小鎚",kind=3},
+ [10419]={en="Analysis Hammer",zh="解析鎚",kind=3},
+ [10420]={en="Fortune’s Maul",zh="招福大鎚",kind=3},
+ [10421]={en="Scorpion Tail",zh="蠍尾突刺",kind=3},
+ [10422]={en="Buster Mace",zh="破甲鎚杖",kind=3},
+ [10423]={en="Great Mace",zh="巨型鎚杖",kind=3},
+ [10424]={en="Golem Hammer",zh="魔像之鎚",kind=3},
+ [10425]={en="Oni Maul",zh="鬼鐵鎚",kind=3},
+ [10426]={en="War Hammer",zh="戰場大鎚",kind=3},
+ [10427]={en="Mjollnir",zh="妙爾尼爾之鎚",kind=3},
+ [10490]={en="Mechabo Hammer SUPER",zh="機械鳥之錘百式",kind=3},
+ [10495]={en="Pilebunker",zh="衝擊樁",kind=3},
+ [10496]={en="Thor’s Hammer+",zh="雷神之鎚·改",kind=3},
+ [10497]={en="Ancient Hammer",zh="古老的鎚",kind=3},
+ [10498]={en="Thor’s Hammer",zh="雷神之鎚",kind=3},
+ [10499]={en="Gaia Hammer",zh="大地之鎚",kind=3},
+ [10500]={en="Codex Belli",zh="神策兵法書",kind=3},
+ [10501]={en="Disciple’s Grimoire",zh="初級魔法辭典",kind=3},
+ [10502]={en="Adept’s Grimoire",zh="中級魔法辭典",kind=3},
+ [10503]={en="Master’s Grimoire",zh="高級魔法辭典",kind=3},
+ [10504]={en="Knightly Tactics",zh="騎士戰術書",kind=3},
+ [10505]={en="The Savant General",zh="奇才軍師之書",kind=3},
+ [10506]={en="Codex Asura",zh="修羅經典",kind=3},
+ [10507]={en="Codex Pestis",zh="蟲毒經典",kind=3},
+ [10508]={en="R’lyeh Text",zh="拉萊耶異本",kind=3},
+ [10509]={en="Celaeno Fragments",zh="塞拉諾斷章",kind=3},
+ [10510]={en="Book of Eibon",zh="伊波恩之書",kind=3},
+ [10511]={en="Pnakotic Manuscript",zh="普那科寫本",kind=3},
+ [10512]={en="Necronomicon",zh="死靈之書",kind=3},
+ [10513]={en="Total Calisthenics",zh="健體大全",kind=3},
+ [10514]={en="Illegible Lexicon",zh="痛擊大辭典",kind=3},
+ [10515]={en="Book of Strength",zh="剛力之書",kind=3},
+ [10516]={en="Battle Grimoire",zh="戰鬥魔導書",kind=3},
+ [10517]={en="Index of War",zh="武神目錄",kind=3},
+ [10518]={en="Blessed Cults",zh="恩寵祭儀書",kind=3},
+ [10519]={en="Luminous Grimoire",zh="光輝魔導書",kind=3},
+ [10520]={en="Annihilaticon",zh="崩殼魔典",kind=3},
+ [10521]={en="Anatomy of Magic",zh="魔法解體抄本",kind=3},
+ [10522]={en="Arch Drain",zh="弧光吸取",kind=3},
+ [10523]={en="Sage’s Journal",zh="賢者的手稿",kind=3},
+ [10524]={en="Tome of Grace",zh="生命讚歌",kind=3},
+ [10525]={en="Book of the Stars",zh="星之書",kind=3},
+ [10526]={en="Book of the Cosmos",zh="異星之書",kind=3},
+ [10590]={en="Codex Providentiae",zh="天命兵法書",kind=3},
+ [10597]={en="Last Resort+",zh="最後底牌·改",kind=3},
+ [10598]={en="Ancient Tome",zh="古老的書籍",kind=3},
+ [10599]={en="Last Resort",zh="最後底牌",kind=3},
+ [10600]={en="Empress Birch",zh="女皇之鞭",kind=3},
+ [10601]={en="Leather Whip",zh="皮鞭",kind=3},
+ [10602]={en="Shock Whip",zh="電擊鞭",kind=3},
+ [10603]={en="Lunar Whip",zh="月光鞭",kind=3},
+ [10604]={en="Death Adder",zh="死亡鞭",kind=3},
+ [10605]={en="Shinobi’s Kusarigama",zh="忍者鎖鐮",kind=3},
+ [10606]={en="Whip Blade",zh="蛇腹劍",kind=3},
+ [10607]={en="Sleipnir’s Tail",zh="奧汀之馬尾鞭",kind=3},
+ [10608]={en="Beast Killer",zh="亡獸",kind=3},
+ [10609]={en="Dragon Whisker",zh="龍鬚",kind=3},
+ [10610]={en="Power Whip",zh="力之鞭",kind=3},
+ [10611]={en="Rush Whip",zh="疾風鞭",kind=3},
+ [10612]={en="Thorn Whip",zh="荊棘鞭",kind=3},
+ [10613]={en="Whip of Affliction",zh="衰縛鞭",kind=3},
+ [10614]={en="Cursed Whip",zh="詛咒之鞭",kind=3},
+ [10615]={en="Serpent Bone Whip",zh="蛇骨鞭",kind=3},
+ [10690]={en="Abyss",zh="深淵",kind=3},
+ [10696]={en="Fire Birch+",zh="烈焰鞭·改",kind=3},
+ [10697]={en="Ancient Whip",zh="古老的鞭",kind=3},
+ [10698]={en="Fire Birch",zh="烈焰鞭",kind=3},
+ [10699]={en="Rugged Whip",zh="粗獷長鞭（暫譯）",kind=3},
+ [10700]={en="Renatus Duo",zh="雷納圖斯二型",kind=3},
+ [10701]={en="Peacemaker",zh="調解者",kind=3},
+ [10702]={en="Firefly",zh="螢火蟲",kind=3},
+ [10703]={en="Musketoon",zh="短滑膛槍",kind=3},
+ [10704]={en="Hastur Long Barrel",zh="哈斯塔長銃",kind=3},
+ [10705]={en="A-Type Sniper R",zh="A式狙擊者R",kind=3},
+ [10706]={en="Kokytos",zh="悲嘆之河",kind=3},
+ [10707]={en="Silver-Round Rifle",zh="銀玉鐵炮",kind=3},
+ [10708]={en="Culverin",zh="卡爾巴林炮",kind=3},
+ [10709]={en="Repeater Rifle",zh="連射槍",kind=3},
+ [10710]={en="Quicksilver",zh="迅銀",kind=3},
+ [10711]={en="Mythril Cannon",zh="秘銀炮",kind=3},
+ [10712]={en="Magi-Blaster",zh="魔法爆能炮",kind=3},
+ [10713]={en="Arcane Long Rifle",zh="弧光長距瞄準鏡",kind=3},
+ [10714]={en="Rune Shooter",zh="符文射手",kind=3},
+ [10715]={en="Spellfire",zh="咒焰",kind=3},
+ [10716]={en="Pulse Cannon",zh="脈衝加農炮",kind=3},
+ [10717]={en="Barrel Blazer",zh="槍管烈焰",kind=3},
+ [10718]={en="Barrier Bane",zh="護盾剋星",kind=3},
+ [10719]={en="Impetus Breaker",zh="節奏破壞者",kind=3},
+ [10720]={en="Jackpot Gun",zh="轉盤槍",kind=3},
+ [10721]={en="Gatling Gun",zh="重機關槍",kind=3},
+ [10722]={en="Loose Cannon",zh="連發射擊",kind=3},
+ [10723]={en="Ultra Magnum",zh="超級馬格南",kind=3},
+ [10790]={en="Caelum Renatum",zh="重生蒼穹",kind=3},
+ [10797]={en="Arcturus+",zh="大角星·改",kind=3},
+ [10798]={en="Ancient Firearm",zh="古老的火槍",kind=3},
+ [10799]={en="Arcturus",zh="大角星",kind=3},
+ [10800]={en="White Roselia",zh="白玫瑰之杖",kind=3},
+ [10801]={en="Mythril Rod",zh="祕銀長杖",kind=3},
+ [10802]={en="Resonate Staff",zh="共振之杖",kind=3},
+ [10803]={en="Silver Staff",zh="銀杖",kind=3},
+ [10804]={en="Vajra Staff",zh="五鈷杵錫杖",kind=3},
+ [10805]={en="Staff of the Magi",zh="賢者之杖",kind=3},
+ [10806]={en="Unyielding Staff",zh="不屈之杖",kind=3},
+ [10807]={en="Mystletainn",zh="米斯特汀",kind=3},
+ [10808]={en="Laevateinn",zh="雷瓦汀",kind=3},
+ [10809]={en="Whale Whisker",zh="鯨鬚",kind=3},
+ [10810]={en="Striking Staff",zh="強擊長杖",kind=3},
+ [10811]={en="War Pick",zh="戰鎬",kind=3},
+ [10812]={en="Iron Baton",zh="鐵製短棍",kind=3},
+ [10813]={en="Pole Mace",zh="鎚杖",kind=3},
+ [10814]={en="Battle Staff",zh="戰鬥長杖",kind=3},
+ [10815]={en="Impact Wand",zh="衝擊魔杖",kind=3},
+ [10816]={en="Rod of Focus",zh="聚能長杖",kind=3},
+ [10817]={en="Catastrophe",zh="災厄",kind=3},
+ [10818]={en="Barrier Staff",zh="護盾長杖",kind=3},
+ [10819]={en="High Caster",zh="高階施法者",kind=3},
+ [10820]={en="Seraph’s Rod",zh="熾天使魔棒",kind=3},
+ [10890]={en="Roselia",zh="羅塞莉亞",kind=3},
+ [10897]={en="Wizard’s Rod+",zh="巫師法杖·改",kind=3},
+ [10898]={en="Ancient Rod",zh="古老的魔棒",kind=3},
+ [10899]={en="Wizard’s Rod",zh="巫師法杖",kind=3},
+ [11000]={en="Leather Armor",zh="皮甲",kind=3},
+ [11001]={en="Knight’s Jacket",zh="騎士夾克",kind=3},
+ [11002]={en="Black Garb",zh="黑裝束",kind=3},
+ [11003]={en="Prickly Straitjacket",zh="荊棘束縛衣",kind=3},
+ [11004]={en="Bronze Chestplate",zh="青銅胸甲",kind=3},
+ [11005]={en="Tunic",zh="束腰衣",kind=3},
+ [11006]={en="Surcoat",zh="外衣",kind=3},
+ [11007]={en="Engineer’s Jacket",zh="工程師夾克",kind=3},
+ [11008]={en="Red Jacket",zh="赤紅外套",kind=3},
+ [11009]={en="Mythril Vest",zh="祕銀背心",kind=3},
+ [11010]={en="Rose Jacket",zh="玫瑰夾克",kind=3},
+ [11011]={en="Shinobi Gear",zh="忍者衣",kind=3},
+ [11012]={en="Power Vest",zh="力量綁帶",kind=3},
+ [11013]={en="Kenpo Gi",zh="功夫裝",kind=3},
+ [11014]={en="Brigandine",zh="布面鐵甲",kind=3},
+ [11015]={en="Crown Vest",zh="皇冠背心",kind=3},
+ [11016]={en="Diamond Chestplate",zh="鑽石胸甲",kind=3},
+ [11017]={en="Bone Mail",zh="骨鎧甲",kind=3},
+ [11018]={en="Anti-Magic Gear",zh="反魔法兵裝",kind=3},
+ [11019]={en="Astral Jacket",zh="星光夾克",kind=3},
+ [11020]={en="Rune Scales",zh="符文鱗甲",kind=3},
+ [11021]={en="Arcane Coat",zh="秘儀外套",kind=3},
+ [11022]={en="Spell Jacket",zh="咒術夾克",kind=3},
+ [11023]={en="Ninja Gear",zh="忍者裝束",kind=3},
+ [11024]={en="Hoodwink Garb",zh="欺詐之衣",kind=3},
+ [11025]={en="Mirage Jacket",zh="幻象夾克",kind=3},
+ [11026]={en="Shadowstep Garb",zh="夜行步伐",kind=3},
+ [11027]={en="Swallow Scales",zh="飛燕鱗甲",kind=3},
+ [11028]={en="Aethereal Chestplate",zh="乙太胸甲",kind=3},
+ [11029]={en="Xibalba Coat",zh="銀外套",kind=3},
+ [11030]={en="Jacket of Restoration",zh="復原夾克",kind=3},
+ [11031]={en="Scarlet Vest",zh="緋紅背心",kind=3},
+ [11032]={en="Adamite Jacket",zh="亞達邁特夾克",kind=3},
+ [11033]={en="Lorica Sancta",zh="神聖甲",kind=3},
+ [11034]={en="Chestplate of Preparation",zh="修練胸甲",kind=3},
+ [11035]={en="Blessed Cuirass",zh="招福胸甲",kind=3},
+ [11097]={en="Mirage Vest+",zh="幻影背心·改",kind=3},
+ [11098]={en="Ancient Garment",zh="古老的輕裝",kind=3},
+ [11099]={en="Mirage Vest",zh="幻影背心",kind=3},
+ [11300]={en="Stout Armor",zh="堅牢之鎧",kind=3},
+ [11301]={en="Crystal Armor",zh="水晶甲",kind=3},
+ [11302]={en="Iron Armor",zh="鋼鐵甲",kind=3},
+ [11303]={en="Silver Chestplate",zh="銀板甲",kind=3},
+ [11304]={en="Golden Armor",zh="黃金甲",kind=3},
+ [11305]={en="Shielded Armor",zh="護盾甲",kind=3},
+ [11306]={en="Phalanx",zh="方陣甲",kind=3},
+ [11307]={en="Knight Armor",zh="騎士鎧甲",kind=3},
+ [11308]={en="Lunar Plate",zh="月之板甲",kind=3},
+ [11309]={en="Carmine Armor",zh="烈火騎士鎧",kind=3},
+ [11310]={en="Glacial Armor",zh="冰天騎士鎧",kind=3},
+ [11311]={en="Polaris Cuirass",zh="極星重鎧",kind=3},
+ [11312]={en="Armor of Dusk",zh="落陽之鎧",kind=3},
+ [11313]={en="Force Armor",zh="原力鎧",kind=3},
+ [11314]={en="Diamond Armor",zh="鑽石鎧",kind=3},
+ [11315]={en="Armor of Gales",zh="風之鎧",kind=3},
+ [11316]={en="Devout’s Armor",zh="修驗者之鎧",kind=3},
+ [11317]={en="Ether Plate",zh="乙太板甲",kind=3},
+ [11318]={en="Oracle’s Armor",zh="神諭鎧",kind=3},
+ [11319]={en="Fortress Gear",zh="要塞兵裝",kind=3},
+ [11320]={en="Scale Mail",zh="鱗甲",kind=3},
+ [11321]={en="Protective Gear",zh="守衛兵裝",kind=3},
+ [11322]={en="Tyr’s Armor",zh="戰神之鎧",kind=3},
+ [11323]={en="Guardian’s Plate",zh="守護者板甲",kind=3},
+ [11324]={en="Plate of Providence",zh="護神大鎧",kind=3},
+ [11325]={en="Beast Hunter’s Armor",zh="獵獸之鎧",kind=3},
+ [11326]={en="Mythril Armor",zh="秘銀鎧",kind=3},
+ [11327]={en="Gear Plate",zh="兵裝板甲",kind=3},
+ [11328]={en="Gladiator’s Armor",zh="格拉迪烏斯之鎧",kind=3},
+ [11329]={en="Lorica Apocalyptica",zh="終焉之鎧",kind=3},
+ [11396]={en="Genji Armor",zh="源氏之鎧",kind=3},
+ [11397]={en="Tatenashi Armor+",zh="楯無之鎧·改",kind=3},
+ [11398]={en="Ancient Cuirass",zh="古老的重裝",kind=3},
+ [11399]={en="Tatenashi Armor",zh="楯無之鎧",kind=3},
+ [11500]={en="Leather Robe",zh="皮製法袍",kind=3},
+ [11501]={en="Spirit Veil",zh="精靈面紗",kind=3},
+ [11502]={en="Sorcerer’s Habit",zh="魔術師之服",kind=3},
+ [11503]={en="Cotton Robe",zh="棉布法袍",kind=3},
+ [11504]={en="White Dress",zh="純白禮服",kind=3},
+ [11505]={en="Angelic Vesture",zh="天使之衣",kind=3},
+ [11506]={en="Silk Robe",zh="絲線法袍",kind=3},
+ [11507]={en="Bard’s Tunic",zh="詩人之服",kind=3},
+ [11508]={en="Cape of the Raiju",zh="雷獸披風",kind=3},
+ [11509]={en="Lunar Eclipse Robe",zh="月蝕法袍",kind=3},
+ [11510]={en="Solar Eclipse Robe",zh="日蝕法袍",kind=3},
+ [11511]={en="Cleric’s Surplice",zh="祭司法袍",kind=3},
+ [11512]={en="Sage’s Robe",zh="賢者法袍",kind=3},
+ [11513]={en="Elegant Robe",zh="瀟灑法袍",kind=3},
+ [11514]={en="Robe of Roses",zh="玫瑰法袍",kind=3},
+ [11515]={en="Devout’s Robe",zh="導師法袍",kind=3},
+ [11516]={en="White Robe",zh="白法袍",kind=3},
+ [11517]={en="Black Robe",zh="黑法袍",kind=3},
+ [11518]={en="Gaia Gear",zh="大地之衣",kind=3},
+ [11519]={en="Minerva Bustier",zh="密涅娃馬甲",kind=3},
+ [11520]={en="Behemoth Suit",zh="凶惡巨獸套裝",kind=3},
+ [11521]={en="Protective Overcoat",zh="護身外套",kind=3},
+ [11522]={en="Aegis Robe",zh="神盾法袍",kind=3},
+ [11523]={en="Vita Cloak",zh="拜亞斗篷",kind=3},
+ [11524]={en="Guarding Gown",zh="守勢法衣",kind=3},
+ [11525]={en="Rock Cloak",zh="岩石屏障",kind=3},
+ [11526]={en="Mirage Robe",zh="幻影羽衣",kind=3},
+ [11527]={en="Phantom Robe",zh="魅影法袍",kind=3},
+ [11528]={en="Mirage Coat",zh="幻象外套",kind=3},
+ [11529]={en="Arch Robe",zh="弧光法袍",kind=3},
+ [11530]={en="Illusory Robe",zh="幻術法袍",kind=3},
+ [11531]={en="Feather Robes",zh="薄羽法袍",kind=3},
+ [11597]={en="Lordly Robes+",zh="領主長袍·改",kind=3},
+ [11598]={en="Ancient Cloak",zh="古老的披風",kind=3},
+ [11599]={en="Lordly Robes",zh="領主長袍",kind=3},
+ [12000]={en="Earrings of Health",zh="體力耳環",kind=3},
+ [12001]={en="Adept’s Armlet",zh="熟練者的手環",kind=3},
+ [12002]={en="Power Stone",zh="力量石",kind=3},
+ [12003]={en="Mage’s Glasses",zh="魔術師的眼鏡",kind=3},
+ [12004]={en="Idaten’s Shoes",zh="飛毛腿之靴",kind=3},
+ [12005]={en="Lucky Bell",zh="幸運之鈴",kind=3},
+ [12006]={en="Fire Sprite Earrings",zh="火精的穿孔耳環",kind=3},
+ [12007]={en="Ring of Retaliation",zh="反物戒指",kind=3},
+ [12008]={en="Aeolian Misanga",zh="疾風之手帶",kind=3},
+ [12009]={en="Libra Lenses",zh="偵測透鏡（暫譯）",kind=3},
+ [12010]={en="Chocobo Down Charm",zh="陸行鳥羽飾",kind=3},
+ [12011]={en="Reflect Ring",zh="反射指環",kind=3},
+ [12012]={en="Protect Ring",zh="防護指環",kind=3},
+ [12013]={en="Barrier Ring",zh="屏障指環",kind=3},
+ [12014]={en="Hermes Sandals",zh="赫密士靴",kind=3},
+ [12015]={en="Iron Sandals",zh="鐵木屐",kind=3},
+ [12016]={en="Berserker Ring",zh="怒火指環",kind=3},
+ [12017]={en="Angel Ring",zh="天使戒指",kind=3},
+ [12018]={en="Safety Bit",zh="安全別針",kind=3},
+ [12019]={en="Star Pendant",zh="星之墜飾",kind=3},
+ [12020]={en="Silver-Rimmed Glasses",zh="銀框眼鏡",kind=3},
+ [12021]={en="Power Wristbands",zh="威力護腕",kind=3},
+ [12022]={en="Bulletproof Vest",zh="防彈背心",kind=3},
+ [12023]={en="Earrings",zh="耳環",kind=3},
+ [12024]={en="Talisman",zh="辟邪護符",kind=3},
+ [12025]={en="Precognizant Beads",zh="洞察念珠",kind=3},
+ [12026]={en="Zephyr Cloak",zh="微風斗篷",kind=3},
+ [12027]={en="Gale Hairpin",zh="疾風髮簪",kind=3},
+ [12028]={en="Brigand’s Gloves",zh="盜賊護手",kind=3},
+ [12029]={en="Alarm Earrings",zh="警鈴耳釘",kind=3},
+ [12030]={en="Swift Badge",zh="迅捷徽記",kind=3},
+ [12031]={en="Poison Charm",zh="劇毒墜飾",kind=3},
+ [12032]={en="Monk’s Prayer Beads",zh="僧侶念珠",kind=3},
+ [12033]={en="Hairband",zh="髮帶",kind=3},
+ [12034]={en="Insulated Gloves",zh="絕緣手套",kind=3},
+ [12035]={en="Headband",zh="頭巾",kind=3},
+ [12036]={en="Mage’s Shard",zh="魔道士的碎片",kind=3},
+ [12037]={en="Mage’s Stone",zh="魔道士之石",kind=3},
+ [12038]={en="Philosopher’s Stone",zh="賢者之石",kind=3},
+ [12039]={en="Aquatic Veil",zh="水之面紗",kind=3},
+ [12040]={en="Jeweled Ring",zh="珠寶指環",kind=3},
+ [12041]={en="Champion’s Belt",zh="冠軍腰帶",kind=3},
+ [12042]={en="Tiara of Frost",zh="冰結頭冠",kind=3},
+ [12043]={en="Fujin’s Fuda",zh="風神護符",kind=3},
+ [12044]={en="Mole Doll",zh="土龍人偶",kind=3},
+ [12045]={en="Scintillating Ring",zh="明光戒指",kind=3},
+ [12046]={en="Silver Key",zh="銀鑰匙",kind=3},
+ [12047]={en="Trick Coin",zh="耍詐硬幣",kind=3},
+ [12048]={en="Protector’s Seal",zh="守護騎士的勛章",kind=3},
+ [12049]={en="Calm Armlet",zh="冷靜手環",kind=3},
+ [12050]={en="Knight’s Medallion",zh="騎士徽章",kind=3},
+ [12051]={en="Crest of Criticality",zh="致命紋章",kind=3},
+ [12052]={en="Blessed Pendant",zh="恩寵墜飾",kind=3},
+ [12053]={en="Chocobo Nitro",zh="陸行鳥渦輪",kind=3},
+ [12054]={en="Enchanted Ring",zh="附魔指環",kind=3},
+ [12055]={en="Amulet of Magic Absorption",zh="吸魔護身符",kind=3},
+ [12056]={en="Moonlight Ring",zh="月光戒指",kind=3},
+ [12057]={en="Hairpin of Grace",zh="慈悲的髮飾",kind=3},
+ [12058]={en="Ring of Rage",zh="憤怒指環",kind=3},
+ [12059]={en="Mastery Pendant",zh="精通墜飾",kind=3},
+ [12060]={en="Stagger Ring",zh="崩身戒指",kind=3},
+ [12061]={en="Adept’s Monocle",zh="巧匠單眼鏡",kind=3},
+ [12062]={en="Arcane Pendant",zh="魔法墜飾",kind=3},
+ [12063]={en="Vitality Charm",zh="活力墜飾",kind=3},
+ [12064]={en="Heart Anklet",zh="心之腳鏈",kind=3},
+ [12065]={en="Ribbon",zh="緞帶",kind=3},
+ [12066]={en="Warding Bell",zh="退魔之鈴",kind=3},
+ [12067]={en="Foe Attractor",zh="敵人磁鐵",kind=3},
+ [12068]={en="Warrior’s Bandana",zh="戰士頭巾",kind=3},
+ [12069]={en="Circlet of Enlightenment",zh="解脫之輪",kind=3},
+ [12070]={en="Gentleman Thief’s Monocle",zh="義賊單眼鏡",kind=3},
+ [12071]={en="Sniper’s Eye",zh="狙擊之眼",kind=3},
+ [12072]={en="Cursed Ring",zh="詛咒指環",kind=3},
+ [12073]={en="Dark Rosary",zh="邪心念珠串",kind=3},
+ [12074]={en="Scar Orb",zh="傷痕寶珠",kind=3},
+ [12075]={en="Evil Eye",zh="惡魔之眼",kind=3},
+ [12076]={en="Vampire Charm",zh="吸血墜飾",kind=3},
+ [12077]={en="Life Charm",zh="生命墜飾",kind=3},
+ [12078]={en="Solar Pendant",zh="太陽墜飾",kind=3},
+ [12079]={en="Snow Spirit’s Scarf",zh="冰精的圍巾",kind=3},
+ [12080]={en="Thunder God’s Earrings",zh="雷帝的耳環",kind=3},
+ [12081]={en="Azure Amulet",zh="藍色護身符",kind=3},
+ [12082]={en="Sylph’s Tiara",zh="風精靈寶冠",kind=3},
+ [12083]={en="Golem Core",zh="魔像之核",kind=3},
+ [12084]={en="Halo Ring",zh="光環指環",kind=3},
+ [12085]={en="Demon’s Ring",zh="惡魔指環",kind=3},
+ [12086]={en="Adamantine Beads",zh="金剛珠",kind=3},
+ [12087]={en="Anti-Magic Studs",zh="反魔穿孔耳環",kind=3},
+ [12090]={en="Mastery Ring",zh="精通指環",kind=3},
+ [12095]={en="Ultima Reactor",zh="最終究極反應爐",kind=3},
+ [12096]={en="Genji Gloves",zh="源氏護手",kind=3},
+ [12097]={en="Gold Hairpin+",zh="黃金頭飾·改",kind=3},
+ [12098]={en="Ancient Accessory",zh="古老的金飾",kind=3},
+ [12099]={en="Gold Hairpin",zh="黃金頭飾",kind=3},
+ [12100]={en="Rose Circlet",zh="紅玫瑰頭冠",kind=3},
+ [12101]={en="Super Ribbon",zh="超級緞帶",kind=3},
+ [12102]={en="Dragon Seal",zh="龍之紋章",kind=3},
+ [12103]={en="Omega Badge",zh="歐米茄勛章",kind=3},
+}
+local function itemDisplayName(id,kind)
+ local n=itemNames[id]
+ if n and n.kind==kind then return n.en.." / "..n.zh end
+ return "Unknown item / 未翻譯道具"
+end
+
+-- UE DataTable rows: sparse TMap&lt;FName, uint8*&gt; with allocation-bit checks.
+local function tableRows(s,o,expected)
+ assert(s.cname(o)=='DataTable' and s.oname(readPointer(o+0x28))==expected,'Data table changed; retry')
+ local m=o+0x30;local p=readPointer(m);local n=readInteger(m+8);local cap=readInteger(m+12)
+ assert(n and cap and n&gt;=0 and n&lt;=cap and cap&lt;=10000,'Invalid table size')
+ assert(n==0 or (p and p&gt;65536),'Invalid row data')
+ local bits=readPointer(m+0x20);if not bits or bits==0 then bits=m+0x10 end
+ local bitCount=readInteger(m+0x28);assert(bitCount and bitCount&gt;=n and bitCount&lt;=10000,'Invalid allocation flags')
+ local out={}
+ for i=0,n-1 do
+  local b=assert(readInteger(bits+math.floor(i/32)*4),'Unreadable allocation flags')
+  if (b &amp; (1 &lt;&lt; (i%32)))~=0 then
+   local a=p+i*24;local row=readPointer(a+8)
+   assert(row and row&gt;65536,'Invalid row pointer')
+   out[#out+1]={key=s.name(readInteger(a)),p=row}
+  end
+ end
+ return out
+end
+local function findTable(s,row)
+ local found
+ for _,t in ipairs(s.tables) do
+  if t.row==row then
+   assert(s.at(t.index)==t.object and s.oname(t.object)==t.name,'Table cache expired; reopen CT')
+   assert(not found,'Multiple matching tables; stop')
+   found=t.object
+  end
+ end
+ return assert(found,'Required table not loaded: '..row)
+end
+local function inventoryChoices(s)
+ local catalog={}
+ for _,kind in ipairs({'CONSUMABLES_ITEM_DATA','EQUIPMENT_ITEM_DATA'}) do
+  for _,r in ipairs(tableRows(s,findTable(s,kind),kind)) do
+   local id=readInteger(r.p+8);local typ=readBytes(r.p+0x70,1)
+   if id and id&gt;0 and (typ==1 or typ==3) and r.key~='?' then
+    assert(not catalog[id],'Duplicate item ID')
+    catalog[id]={name=itemDisplayName(id,typ),kind=typ}
+   end
+  end
+ end
+ assert(s.count&lt;=5000,'Inventory too large')
+ local out,seen={},{}
+ for i=0,s.count-1 do
+  local a=s.inventory+i*8;local id=readInteger(a);local qty=readInteger(a+4)
+  assert(id and qty and qty&gt;=0,'Invalid inventory entry')
+  local item=catalog[id]
+  if item and qty&gt;0 then
+   assert(not seen[id],'Duplicate owned item ID');seen[id]=true
+   out[#out+1]={id=id,quantity=qty,address=a,name=item.name,kind=item.kind}
+  end
+ end
+ table.sort(out,function(a,b)return a.id&lt;b.id end)
+ return out
+end
+local function setItem(s,item,target)
+ assert(target and target==math.floor(target) and target&gt;=1 and target&lt;=99,'Quantity must be 1..99')
+ local now=connect()
+ assert(now.save==s.save and now.manager==s.manager and now.inventory==s.inventory and now.count==s.count,'Inventory changed; reopen the picker')
+ assert(readInteger(item.address)==item.id and readInteger(item.address+4)==item.quantity,'Item changed during input; retry')
+ if target==item.quantity then return end
+ assert(writeInteger(item.address+4,target),'Item write failed')
+ if readInteger(item.address+4)~=target then
+  writeInteger(item.address+4,item.quantity)
+  error('Item read-back failed; attempted to restore original quantity')
+ end
+end
+local function arrayAt(a,max)
+ local p=readPointer(a);local n=readInteger(a+8);local cap=readInteger(a+12)
+ assert(n and cap and n&gt;=0 and n&lt;=cap and cap&lt;=max,'Invalid array')
+ assert(n==0 or (p and p&gt;65536),'Invalid array pointer')
+ return p,n
+end
+local function partyPlan(s)
+ local party,n=arrayAt(s.save+0x90,8);assert(n&gt;0,'No party members')
+ local units,un=arrayAt(s.save+0x60,64)
+ local byId={}
+ for i=0,un-1 do local a=units+i*0xA0;local id=readInteger(a);assert(id and not byId[id],'Invalid unit ID');byId[id]=a end
+ local definitions={}
+ for _,r in ipairs(tableRows(s,findTable(s,'UNIT_PARAMETER'),'UNIT_PARAMETER')) do definitions[readInteger(r.p+8)]={curve=readInteger(r.p+0x3C),name=r.key} end
+ local curves={}
+ for _,r in ipairs(tableRows(s,findTable(s,'UNIT_LEVEL_PARAMETER_LIST'),'UNIT_LEVEL_PARAMETER_LIST')) do curves[readInteger(r.p+8)]=readPointer(r.p+0x10) end
+ local out,seen={},{}
+ for i=0,n-1 do
+  local id=readInteger(party+i*4)
+  assert(id and id&gt;=1001 and id&lt;=1008 and not seen[id],'Unexpected party member');seen[id]=true
+  local a=assert(byId[id],'Party member missing from save');local def=assert(definitions[id],'Missing unit definition')
+  local levels={}
+  for _,r in ipairs(tableRows(s,assert(curves[def.curve],'Missing curve'),'UNIT_LEVEL_PARAMETER')) do
+   local lv=readInteger(r.p+8);local xp=readInteger(r.p+12)
+   if lv and lv&gt;=1 and lv&lt;=99 then assert(not levels[lv] and xp and xp&gt;=0,'Invalid level curve');levels[lv]=xp end
+  end
+  local sum=0;for lv=1,99 do sum=sum+assert(levels[lv],'Incomplete level curve') end
+  assert(sum&gt;0 and sum&lt;=2147483647,'Invalid level-99 EXP')
+  local old=readInteger(a+4);assert(old and old&gt;=0,'Invalid current EXP')
+  out[#out+1]={id=id,address=a,experience=old,target=sum,name=def.name,partyIndex=i}
+ end
+ return out,party,n,units
+end
+local function checkCode(a,bytes)
+ local actual=readBytes(a,#bytes,true);assert(actual,'Game function unavailable')
+ for i=1,#bytes do assert(actual[i]==bytes[i],'Game function mismatch; stop') end
+end
+local function checkLevelFunctions(s)
+ checkCode(s.base+0x523BC00,{0x48,0x8B,0xC4,0x56,0x48,0x81,0xEC,0xD0,0,0,0})
+ checkCode(s.base+0x524B3A0,{0x48,0x89,0x5C,0x24,0x18,0x48,0x89,0x74,0x24,0x20,0x57,0x48,0x81,0xEC,0xD0,1,0,0})
+end
+local function setParty99(s,plan,party,n,units)
+ checkLevelFunctions(s)
+ -- Preflight all targets with the game's own EXP-to-level calculation.
+ for _,u in ipairs(plan) do
+  assert(executeCodeEx(0,5000,s.base+0x523BC00,u.id,u.target)==99,'Game rejected level-99 threshold')
+ end
+ local report={}
+ for _,u in ipairs(plan) do
+  local now=connect();local pp,pn=arrayAt(now.save+0x90,8);local up=arrayAt(now.save+0x60,64)
+  assert(now.save==s.save and now.manager==s.manager and pp==party and pn==n and up==units,'Party/save changed; stop')
+  for _,member in ipairs(plan) do assert(readInteger(party+member.partyIndex*4)==member.id,'Party changed; stop') end
+  assert(readInteger(u.address)==u.id and readInteger(u.address+4)==u.experience,'Character EXP changed; retry')
+  if u.experience&lt;u.target then
+   -- Native SetPlayableUnitExperience(UnitId, EXP, isMaxStatusSet=false):
+   -- updates save EXP and refreshes the live character parameters/skills.
+   executeCodeEx(0,10000,s.base+0x524B3A0,u.id,u.target,0)
+   assert(readInteger(u.address+4)==u.target,'EXP update did not finish; stop and check game')
+  end
+  local xp=readInteger(u.address+4)
+  local lv=executeCodeEx(0,5000,s.base+0x523BC00,u.id,xp)
+  assert(lv==99,'Level verification failed; stop and check game')
+  report[#report+1]=string.format('%s（ID %d）：Lv.%d／EXP %d',u.name,u.id,lv,xp)
+ end
+ return report
+end
+
+local s=connect()
+local pack={
+ {10198,1,1,1},
+ {10298,1,1,2},
+ {10398,1,1,3},
+ {10497,1,1,4},
+ {10598,1,1,5},
+ {10697,1,1,8},
+ {10798,1,1,6},
+ {10898,1,1,7},
+ {11398,1,2,9},
+ {11098,1,2,10},
+ {11598,1,2,11},
+ {12098,1,3,0},
+}
+local catalog={}
+for _,r in ipairs(tableRows(s,findTable(s,'EQUIPMENT_ITEM_DATA'),'EQUIPMENT_ITEM_DATA')) do catalog[readInteger(r.p+8)]=r.p end
+checkCode(s.base+0x5107500,{0x48,0x89,0x5C,0x24,0x08,0x57,0x48,0x83,0xEC,0x20,0x8B,0xDA,0x8B,0xF9})
+local function inventoryMap(state)
+ assert(state.count&lt;=5000,'Inventory too large')
+ local map={}
+ for i=0,state.count-1 do
+  local p=state.inventory+i*8;local id=readInteger(p);local qty=readInteger(p+4)
+  assert(id and qty and qty&gt;=0 and qty&lt;=2147483647 and map[id]==nil,'Invalid/duplicate inventory record')
+  map[id]=qty
+ end
+ return map
+end
+local expected=inventoryMap(s)
+local counts={0,0,0}
+for _,v in ipairs(pack) do counts[v[3]]=counts[v[3]]+1 end
+local lines={'十二件各補足背包至少 1 件；不改試煉旗標，成就是否觸發待測。',''}
+for _,v in ipairs(pack) do
+ local row=assert(catalog[v[1]],'Equipment missing from this build')
+ assert(readBytes(row+0x70,1)==3 and readBytes(row+0x80,1)==v[3] and readBytes(row+0x81,1)==v[4],'Equipment category mismatch')
+ assert(itemNames[v[1]] and itemNames[v[1]].kind==3,'Equipment label missing')
+ lines[#lines+1]=itemDisplayName(v[1],3)..' × '..v[2]
+end
+local answer=inputQuery('古老武具十二件',table.concat(lines,'\n')..'\n\n請停在選單並備份存檔。輸入 YES 執行，取消則不修改：','')
+if not answer then return end
+assert(answer:upper()=='YES','Enter YES or cancel')
+local added=0
+for _,v in ipairs(pack) do
+ local current=connect()
+ assert(current.save==s.save and current.manager==s.manager,'Save changed; stopped (earlier grants may remain)')
+ local actual=inventoryMap(current)
+ for id,qty in pairs(expected) do assert(actual[id]==qty,'Inventory changed; stopped (earlier grants may remain)') end
+ for id,qty in pairs(actual) do assert(expected[id]==qty,'Inventory changed; stopped (earlier grants may remain)') end
+ local old=actual[v[1]] or 0
+ if old&lt;v[2] then
+  executeCodeEx(0,10000,s.base+0x5107500,v[1],v[2]-old)
+  local after=connect();assert(after.save==s.save,'Save changed after grant; stop')
+  expected[v[1]]=v[2]
+  actual=inventoryMap(after)
+  for id,qty in pairs(expected) do assert(actual[id]==qty,'Grant read-back failed; stop and check inventory') end
+  for id,qty in pairs(actual) do assert(expected[id]==qty,'Unexpected inventory change; stop and check inventory') end
+  added=added+v[2]-old
+ end
+end
+showMessage('古老武具十二件完成，本次新增 '..added..' 件。請重開裝備選單，自行選擇各角色裝備；確認後另存新欄位。')
+
+{$asm}
+[DISABLE]
+</AssemblerScript>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>18</ID>
+      <Description>"18 一般版十二武具（各補足 1 件／一次）"</Description>
+      <VariableType>Auto Assembler Script</VariableType>
+      <AssemblerScript>[ENABLE]
+{$lua}
+if syntaxcheck then return end
+-- FFRS retail Steam build 24250053. Read-only lookup, no injected game calls.
+-- SDK reference: PolarWizard/final-fantasy-resonance-fix (MIT).
+local function connect(battleOnly)
+ local pid=assert(getProcessIDFromProcessName('FFRS-Win64-Shipping.exe'),'Resonance is not running')
+ if getOpenedProcessID()~=pid then openProcess(pid) end
+ local base=assert(getAddressSafe('FFRS-Win64-Shipping.exe'),'Game module unavailable')
+ local pe=base+readInteger(base+0x3c)
+ assert(readInteger(pe+8)==0x6A586B2F and readInteger(pe+0x50)==503013376,'Unsupported game build; stop and revalidate')
+ local pool=base+0x9CA1280
+ local names={}
+ local blocks=readInteger(pool+8)
+ assert(blocks and blocks&gt;=0 and blocks&lt;8192,'Invalid name pool')
+ local function name(id)
+  if not id or id&lt;0 then return '?' end
+  if names[id] then return names[id] end
+  local block=math.floor(id/65536);local off=(id%65536)*2
+  if block&gt;blocks then blocks=readInteger(pool+8) or -1 end
+  if block&gt;blocks or blocks&gt;=8192 then return '?' end
+  local p=readPointer(pool+0x10+block*8);if not p or p&lt;65536 then return '?' end
+  local h=readSmallInteger(p+off);if not h then return '?' end
+  if h&lt;0 then h=h+65536 end
+  local len=math.floor(h/64)
+  if len&gt;1023 then return '?' end
+  local s
+  if h%2==1 then s=readString(p+off+2,len*2,true)
+  else local b=readBytes(p+off+2,len,true);s=b and string.char(table.unpack(b)) end
+  names[id]=s or '?';return names[id]
+ end
+ assert(name(0)=='None','Name pool does not match this game')
+ local function oname(o) return o and o&gt;65536 and name(readInteger(o+0x18)) or '?' end
+ local classes={}
+ local function cname(o)
+  local c=o and readPointer(o+0x10)
+  if not c or c&lt;65536 then return '?' end
+  if not classes[c] then classes[c]=oname(c) end
+  return classes[c]
+ end
+ local world=readPointer(base+0x9AA0540)
+ assert(world and world&gt;65536 and cname(world)=='World','Wait for a loaded world')
+ local gi=readPointer(world+0x228)
+ assert(gi and gi&gt;65536,'Wait for the game instance')
+ local g=base+0x9D84DD0;local count=readInteger(g+0x14);local chunks=readPointer(g)
+ assert(count and count&gt;0 and count&lt;2000000 and chunks and chunks&gt;65536,'Invalid object array')
+ local chunkCount=readInteger(g+0x1c)
+ assert(chunkCount and chunkCount&gt;0 and chunkCount&lt;=math.ceil(2000000/65536),'Invalid object chunks')
+ local function at(i)
+  local currentCount=battleOnly and readInteger(g+0x14) or count
+  if not i or not currentCount or currentCount&gt;2000000 or i&lt;0 or i&gt;=currentCount then return nil end
+  local ch=readPointer(chunks+math.floor(i/65536)*8)
+  return ch and ch&gt;65536 and readPointer(ch+(i%65536)*24) or nil
+ end
+ -- Battle automation does not use inventory tables or save-data writes.
+ if battleOnly then return {at=at,oname=oname,cname=cname,name=name,pid=pid,base=base} end
+ local function ismanager(o)
+  if not o or o&lt;65536 then return false end
+  local flags=readInteger(o+8)
+  return flags and (flags &amp; 0x10)==0 and cname(o)=='CPP_MuchaSaveDataManager' and readPointer(o+0x20)==gi
+ end
+ local cached=_G.FFRS_CT_SESSION
+ local manager,index
+ local tables={}
+ if cached and cached.pid==pid and cached.base==base and at(cached.index)==cached.manager and ismanager(cached.manager) and cached.tables then
+  manager,index=cached.manager,cached.index
+  tables=cached.tables
+ else
+  for i=0,count-1 do
+   local o=at(i)
+   if o and o&gt;65536 and cname(o)=='DataTable' then
+    local row=readPointer(o+0x28)
+    local rn=oname(row)
+    if rn=='CONSUMABLES_ITEM_DATA' or rn=='EQUIPMENT_ITEM_DATA' or rn=='UNIT_PARAMETER' or rn=='UNIT_LEVEL_PARAMETER_LIST' then
+     tables[#tables+1]={object=o,index=i,row=rn,name=oname(o)}
+    end
+   end
+   if ismanager(o) then assert(not manager,'Multiple active save managers; stop');manager,index=o,i end
+  end
+ end
+ assert(manager,'Active save manager not found; load a save first')
+ local save=readPointer(manager+0x60)
+ assert(save and save&gt;65536 and cname(save)=='CPP_MuchaGameSaveData','Active save data unavailable')
+ local flags=readInteger(save+8);assert(flags and (flags &amp; 0x10)==0,'Default object is not a save')
+ local gil=readInteger(save+0x28)
+ assert(gil and gil&gt;=0 and gil&lt;=2147483647,'Invalid money value')
+ local inv=readPointer(save+0xA8);local n=readInteger(save+0xB0);local cap=readInteger(save+0xB4)
+ assert(n and cap and n&gt;=0 and n&lt;=cap and cap&lt;=100000,'Invalid inventory array')
+ assert(n==0 or (inv and inv&gt;65536),'Invalid inventory pointer')
+ _G.FFRS_CT_SESSION={pid=pid,base=base,manager=manager,index=index,tables=tables}
+ return {at=at,oname=oname,cname=cname,name=name,tables=tables,pid=pid,base=base,manager=manager,save=save,gil=gil,inventory=inv,count=n,capacity=cap}
+end
+
+-- Official item labels from installed Steam build 24250053, en / zh-Hant.
+-- Two untranslated zh-Hant placeholders use explicitly marked provisional translations.
+-- Only item-name strings are included; no descriptions, dialogue, or game assets.
+local itemNames = {
+ [1]={en="Potion",zh="治療劑",kind=1},
+ [2]={en="Hi-Potion",zh="高級治療劑",kind=1},
+ [3]={en="Ether",zh="乙太",kind=1},
+ [4]={en="Phoenix Down",zh="鳳凰尾巴",kind=1},
+ [7]={en="Antidote Herb",zh="解毒草",kind=1},
+ [8]={en="Remedy",zh="萬能藥",kind=1},
+ [9]={en="Knife of Poison",zh="毒匕首",kind=1},
+ [10]={en="Eye Drops",zh="眼藥",kind=1},
+ [11]={en="Smelling Salts",zh="清醒藥",kind=1},
+ [12]={en="Echo Herb",zh="山彥草",kind=1},
+ [13]={en="Unicorn Horn",zh="獨角獸之角",kind=1},
+ [14]={en="X-Potion",zh="至高治療劑",kind=1},
+ [16]={en="Gold Needle",zh="金針",kind=1},
+ [17]={en="Herb of Awakening",zh="提神劑",kind=1},
+ [18]={en="X-Ether",zh="超級乙太",kind=1},
+ [19]={en="Healing Spring",zh="回復之泉",kind=1},
+ [20]={en="Turbo Ether",zh="渦輪乙太",kind=1},
+ [22]={en="Elixir",zh="萬靈藥",kind=1},
+ [23]={en="Megalixir",zh="終極萬靈藥",kind=1},
+ [24]={en="Smoke Bomb",zh="煙霧彈",kind=1},
+ [26]={en="Knife of Blind",zh="失明匕首",kind=1},
+ [27]={en="Knife of Silence",zh="沉默匕首",kind=1},
+ [28]={en="Knife of Confuse",zh="混亂匕首",kind=1},
+ [29]={en="Knife of Paralysis",zh="麻痺匕首",kind=1},
+ [30]={en="Knife of Sleep",zh="睡眠匕首",kind=1},
+ [31]={en="Mist Potion",zh="噴霧治療劑",kind=1},
+ [32]={en="Mist Hi-Potion",zh="噴霧高級治療劑",kind=1},
+ [33]={en="Mist X-Potion",zh="噴霧至高治療劑",kind=1},
+ [34]={en="Mist Ether",zh="噴霧乙太",kind=1},
+ [35]={en="Mist Turbo Ether",zh="噴霧渦輪乙太",kind=1},
+ [36]={en="Mist X-Ether",zh="噴霧超級乙太",kind=1},
+ [37]={en="Phoenix Pinion",zh="鳳凰羽毛",kind=1},
+ [200]={en="Flame Scroll II",zh="火遁卷軸·貳",kind=1},
+ [201]={en="Ice Scroll II",zh="冰遁卷軸·貳",kind=1},
+ [202]={en="Wind Scroll II",zh="風遁卷軸·貳",kind=1},
+ [203]={en="Earth Scroll II",zh="土遁卷軸·貳",kind=1},
+ [204]={en="Lightning Scroll II",zh="雷遁卷軸·貳",kind=1},
+ [205]={en="Water Scroll II",zh="水遁卷軸·貳",kind=1},
+ [206]={en="Shuriken",zh="手裏劍",kind=1},
+ [207]={en="Fuma Shuriken",zh="風魔手裏劍",kind=1},
+ [208]={en="Chef’s Knife",zh="菜刀",kind=1},
+ [209]={en="Flame Scroll I",zh="火遁卷軸·壹",kind=1},
+ [210]={en="Ice Scroll I",zh="冰遁卷軸·壹",kind=1},
+ [211]={en="Wind Scroll I",zh="風遁卷軸·壹",kind=1},
+ [212]={en="Earth Scroll I",zh="土遁卷軸·壹",kind=1},
+ [213]={en="Lightning Scroll I",zh="雷遁卷軸·壹",kind=1},
+ [214]={en="Water Scroll I",zh="水遁卷軸·壹",kind=1},
+ [500]={en="Tent",zh="帳篷",kind=1},
+ [600]={en="Small Golden Shell",zh="金色的小甲殼",kind=1},
+ [601]={en="Golden Shell",zh="金色的甲殼",kind=1},
+ [602]={en="Large Golden Shell",zh="金色的大甲殼",kind=1},
+ [10100]={en="Crimson Saber",zh="深紅烈焰",kind=3},
+ [10101]={en="Bronze Sword",zh="青銅劍",kind=3},
+ [10102]={en="Longsword",zh="長劍",kind=3},
+ [10103]={en="Bladed Shield",zh="劍盾",kind=3},
+ [10104]={en="Knight’s Blade",zh="騎士之劍",kind=3},
+ [10105]={en="Flametongue",zh="熾焰火舌",kind=3},
+ [10106]={en="Icebrand",zh="寒冰烙印",kind=3},
+ [10107]={en="Claymore",zh="闊刃大劍",kind=3},
+ [10108]={en="Kaiser Sword",zh="帝皇之劍",kind=3},
+ [10109]={en="Bastard Sword",zh="變種劍",kind=3},
+ [10110]={en="Blood Sword",zh="嗜血劍",kind=3},
+ [10111]={en="Greatsword",zh="巨劍",kind=3},
+ [10112]={en="Rune Blade",zh="符文刃",kind=3},
+ [10113]={en="Lunar Sword",zh="月之劍",kind=3},
+ [10114]={en="Stagger Blade",zh="石化劍",kind=3},
+ [10115]={en="Soul Sabre",zh="靈魂劍",kind=3},
+ [10116]={en="Sword of Trials",zh="修驗劍",kind=3},
+ [10117]={en="Falchion",zh="彎刃刀",kind=3},
+ [10118]={en="Moon Saber",zh="月華軍刀",kind=3},
+ [10119]={en="Nocturne",zh="夜想曲",kind=3},
+ [10120]={en="Arcana Blade",zh="秘儀之刃",kind=3},
+ [10121]={en="Knight’s Sword",zh="騎士之劍",kind=3},
+ [10122]={en="Ether’s Light",zh="乙太導標",kind=3},
+ [10123]={en="Guardian Sword",zh="守護者之劍",kind=3},
+ [10124]={en="Variable Steel",zh="變形劍",kind=3},
+ [10125]={en="Briar Edge",zh="荊棘劍",kind=3},
+ [10126]={en="Hero’s Blade",zh="勇者之劍",kind=3},
+ [10127]={en="Indomitable",zh="不沉之劍",kind=3},
+ [10128]={en="Flamberge",zh="火焰波刃劍",kind=3},
+ [10129]={en="Malice Breaker",zh="破魔劍",kind=3},
+ [10130]={en="Knight’s Greatsword",zh="王國騎士團的大劍",kind=3},
+ [10190]={en="Save the Vermillion",zh="朱紅守護",kind=3},
+ [10194]={en="Apocalypse",zh="天啓劍",kind=3},
+ [10195]={en="Excalibur",zh="石中劍",kind=3},
+ [10196]={en="Lightbringer",zh="光明使者",kind=3},
+ [10197]={en="Ragnarok+",zh="諸神黃昏·改",kind=3},
+ [10198]={en="Ancient Greatsword",zh="古老的大劍",kind=3},
+ [10199]={en="Ragnarok",zh="諸神黃昏",kind=3},
+ [10200]={en="Shiden",zh="紫電",kind=3},
+ [10201]={en="Nodachi",zh="野太刀",kind=3},
+ [10202]={en="Sakura-Fubuki",zh="櫻吹雪",kind=3},
+ [10203]={en="Ashura",zh="阿修羅",kind=3},
+ [10204]={en="Tsukiyo no Tachi",zh="月夜太刀",kind=3},
+ [10205]={en="Kuki",zh="九鬼",kind=3},
+ [10206]={en="Hyosetsumaru",zh="冰雪丸",kind=3},
+ [10207]={en="Dodanuki",zh="同田貫",kind=3},
+ [10208]={en="Uchigatana",zh="打刀",kind=3},
+ [10209]={en="Samurai’s Katana",zh="武士刀",kind=3},
+ [10210]={en="Rasetsu",zh="羅剎",kind=3},
+ [10211]={en="Hototogisu",zh="不如歸",kind=3},
+ [10212]={en="Shiranui",zh="不知火",kind=3},
+ [10213]={en="Kogarasumaru",zh="小烏丸",kind=3},
+ [10214]={en="Kiku-Ichimonji",zh="菊一文字",kind=3},
+ [10215]={en="Kotetsu",zh="虎徹",kind=3},
+ [10216]={en="Osafune",zh="備前長船",kind=3},
+ [10217]={en="Laserblade",zh="雷射劍",kind=3},
+ [10218]={en="Astral Blade",zh="星芒之刃",kind=3},
+ [10219]={en="Reito",zh="靈刀",kind=3},
+ [10220]={en="Genmato",zh="幻魔刀",kind=3},
+ [10221]={en="Rikudo",zh="六道",kind=3},
+ [10222]={en="Hasaito",zh="破碎刀",kind=3},
+ [10223]={en="Sundering Odachi",zh="削鎧大太刀",kind=3},
+ [10224]={en="Kikokusenga",zh="鬼哭穿牙",kind=3},
+ [10225]={en="Kumobashiri",zh="雲走",kind=3},
+ [10226]={en="Guardbreaker",zh="破防者",kind=3},
+ [10227]={en="Iwakirimaru",zh="岩切丸",kind=3},
+ [10228]={en="Vibroblade",zh="超高周波刀",kind=3},
+ [10229]={en="Murasame",zh="村雨",kind=3},
+ [10230]={en="Gorgon Sword",zh="蛇髮女妖之劍",kind=3},
+ [10231]={en="Carbide Blade",zh="超硬合金刀",kind=3},
+ [10290]={en="Shisui",zh="止水",kind=3},
+ [10294]={en="Mutsunokami",zh="陸奧守",kind=3},
+ [10295]={en="Masamune",zh="正宗",kind=3},
+ [10296]={en="Murakumo",zh="天叢雲劍",kind=3},
+ [10297]={en="Sasuke’s Blade+",zh="佐助刀·改",kind=3},
+ [10298]={en="Ancient Katana",zh="古老的刀",kind=3},
+ [10299]={en="Sasuke’s Blade",zh="佐助刀",kind=3},
+ [10300]={en="Reincarnation",zh="輪迴之翼",kind=3},
+ [10301]={en="Silver Bow",zh="銀弓",kind=3},
+ [10302]={en="Floral Arc",zh="花之弓",kind=3},
+ [10303]={en="Fujin’s Bow",zh="風神之弓",kind=3},
+ [10304]={en="Rune Bow",zh="符文之弓",kind=3},
+ [10305]={en="Midnight Longbow",zh="夜之長弓",kind=3},
+ [10306]={en="Shortbow",zh="短弓",kind=3},
+ [10307]={en="Longbow",zh="長弓",kind=3},
+ [10308]={en="Elfin Bow",zh="精靈弓",kind=3},
+ [10309]={en="Greatbow",zh="強弓",kind=3},
+ [10310]={en="Crescent Bow",zh="新月弓",kind=3},
+ [10311]={en="Composite Bow",zh="複合弓",kind=3},
+ [10312]={en="Loxley Bow",zh="俠盜弓",kind=3},
+ [10313]={en="Oracle Bow",zh="神諭之弓",kind=3},
+ [10314]={en="Gandiva",zh="鋼迪瓦之弓",kind=3},
+ [10315]={en="Compound Bow",zh="機械弓",kind=3},
+ [10316]={en="Rock Piercer",zh="削岩弓",kind=3},
+ [10317]={en="Heavy Crossbow",zh="重弩",kind=3},
+ [10318]={en="Ballista",zh="破城弓",kind=3},
+ [10319]={en="Deafening Bow",zh="轟射弓",kind=3},
+ [10320]={en="Cure Drop",zh="治癒露滴",kind=3},
+ [10321]={en="Seraphim Bow",zh="熾天使之弓",kind=3},
+ [10322]={en="Moon Rain",zh="月華之雨",kind=3},
+ [10323]={en="Ydalir",zh="伊奇瓦爾弓",kind=3},
+ [10324]={en="Rune Arch",zh="符文弓手",kind=3},
+ [10325]={en="Kagura Longbow",zh="神樂大弓",kind=3},
+ [10326]={en="Bow of the Hawk",zh="鷹之弓",kind=3},
+ [10327]={en="Spellblade’s Bow",zh="魔鬥士大弓",kind=3},
+ [10390]={en="Elysium",zh="艾利西昂",kind=3},
+ [10395]={en="Yoichi Bow",zh="與一弓",kind=3},
+ [10396]={en="Faerie Bow",zh="妖精之弓",kind=3},
+ [10397]={en="Artemis Bow+",zh="狩神弓·改",kind=3},
+ [10398]={en="Ancient Bow",zh="古老的弓",kind=3},
+ [10399]={en="Artemis Bow",zh="狩神弓",kind=3},
+ [10400]={en="Mechabo Hammer",zh="機械鳥之槌",kind=3},
+ [10401]={en="Bronze Hammer",zh="青銅槌",kind=3},
+ [10402]={en="Cross Pein Hammer",zh="十字鎚",kind=3},
+ [10403]={en="Sledgehammer",zh="粉碎鎚",kind=3},
+ [10404]={en="Iron Hammer",zh="鋼鐵鎚",kind=3},
+ [10405]={en="Heroic Hammer",zh="勇氣鎚",kind=3},
+ [10406]={en="Slam Hammer",zh="重擊鎚",kind=3},
+ [10407]={en="Nightbreaker",zh="暗夜鎚",kind=3},
+ [10408]={en="Warpick",zh="巨鎚",kind=3},
+ [10409]={en="Star Shatterer　",zh="碎星鎚　",kind=3},
+ [10410]={en="Dreadwing Mallet",zh="怪鳥大翼鎚",kind=3},
+ [10411]={en="Morning Star",zh="晨星槌",kind=3},
+ [10412]={en="Arc Hammer",zh="弧光鎚",kind=3},
+ [10413]={en="Divine Mallet",zh="聖印大鎚",kind=3},
+ [10414]={en="Demon’s Maul",zh="惡魔大鎚",kind=3},
+ [10415]={en="Piercing Mace",zh="必殺鎚矛",kind=3},
+ [10416]={en="Bullseye Mace",zh="標靶棒",kind=3},
+ [10417]={en="Clown Hammer",zh="嗶嗶鎚",kind=3},
+ [10418]={en="Inquisitor’s Gavel",zh="審問官小鎚",kind=3},
+ [10419]={en="Analysis Hammer",zh="解析鎚",kind=3},
+ [10420]={en="Fortune’s Maul",zh="招福大鎚",kind=3},
+ [10421]={en="Scorpion Tail",zh="蠍尾突刺",kind=3},
+ [10422]={en="Buster Mace",zh="破甲鎚杖",kind=3},
+ [10423]={en="Great Mace",zh="巨型鎚杖",kind=3},
+ [10424]={en="Golem Hammer",zh="魔像之鎚",kind=3},
+ [10425]={en="Oni Maul",zh="鬼鐵鎚",kind=3},
+ [10426]={en="War Hammer",zh="戰場大鎚",kind=3},
+ [10427]={en="Mjollnir",zh="妙爾尼爾之鎚",kind=3},
+ [10490]={en="Mechabo Hammer SUPER",zh="機械鳥之錘百式",kind=3},
+ [10495]={en="Pilebunker",zh="衝擊樁",kind=3},
+ [10496]={en="Thor’s Hammer+",zh="雷神之鎚·改",kind=3},
+ [10497]={en="Ancient Hammer",zh="古老的鎚",kind=3},
+ [10498]={en="Thor’s Hammer",zh="雷神之鎚",kind=3},
+ [10499]={en="Gaia Hammer",zh="大地之鎚",kind=3},
+ [10500]={en="Codex Belli",zh="神策兵法書",kind=3},
+ [10501]={en="Disciple’s Grimoire",zh="初級魔法辭典",kind=3},
+ [10502]={en="Adept’s Grimoire",zh="中級魔法辭典",kind=3},
+ [10503]={en="Master’s Grimoire",zh="高級魔法辭典",kind=3},
+ [10504]={en="Knightly Tactics",zh="騎士戰術書",kind=3},
+ [10505]={en="The Savant General",zh="奇才軍師之書",kind=3},
+ [10506]={en="Codex Asura",zh="修羅經典",kind=3},
+ [10507]={en="Codex Pestis",zh="蟲毒經典",kind=3},
+ [10508]={en="R’lyeh Text",zh="拉萊耶異本",kind=3},
+ [10509]={en="Celaeno Fragments",zh="塞拉諾斷章",kind=3},
+ [10510]={en="Book of Eibon",zh="伊波恩之書",kind=3},
+ [10511]={en="Pnakotic Manuscript",zh="普那科寫本",kind=3},
+ [10512]={en="Necronomicon",zh="死靈之書",kind=3},
+ [10513]={en="Total Calisthenics",zh="健體大全",kind=3},
+ [10514]={en="Illegible Lexicon",zh="痛擊大辭典",kind=3},
+ [10515]={en="Book of Strength",zh="剛力之書",kind=3},
+ [10516]={en="Battle Grimoire",zh="戰鬥魔導書",kind=3},
+ [10517]={en="Index of War",zh="武神目錄",kind=3},
+ [10518]={en="Blessed Cults",zh="恩寵祭儀書",kind=3},
+ [10519]={en="Luminous Grimoire",zh="光輝魔導書",kind=3},
+ [10520]={en="Annihilaticon",zh="崩殼魔典",kind=3},
+ [10521]={en="Anatomy of Magic",zh="魔法解體抄本",kind=3},
+ [10522]={en="Arch Drain",zh="弧光吸取",kind=3},
+ [10523]={en="Sage’s Journal",zh="賢者的手稿",kind=3},
+ [10524]={en="Tome of Grace",zh="生命讚歌",kind=3},
+ [10525]={en="Book of the Stars",zh="星之書",kind=3},
+ [10526]={en="Book of the Cosmos",zh="異星之書",kind=3},
+ [10590]={en="Codex Providentiae",zh="天命兵法書",kind=3},
+ [10597]={en="Last Resort+",zh="最後底牌·改",kind=3},
+ [10598]={en="Ancient Tome",zh="古老的書籍",kind=3},
+ [10599]={en="Last Resort",zh="最後底牌",kind=3},
+ [10600]={en="Empress Birch",zh="女皇之鞭",kind=3},
+ [10601]={en="Leather Whip",zh="皮鞭",kind=3},
+ [10602]={en="Shock Whip",zh="電擊鞭",kind=3},
+ [10603]={en="Lunar Whip",zh="月光鞭",kind=3},
+ [10604]={en="Death Adder",zh="死亡鞭",kind=3},
+ [10605]={en="Shinobi’s Kusarigama",zh="忍者鎖鐮",kind=3},
+ [10606]={en="Whip Blade",zh="蛇腹劍",kind=3},
+ [10607]={en="Sleipnir’s Tail",zh="奧汀之馬尾鞭",kind=3},
+ [10608]={en="Beast Killer",zh="亡獸",kind=3},
+ [10609]={en="Dragon Whisker",zh="龍鬚",kind=3},
+ [10610]={en="Power Whip",zh="力之鞭",kind=3},
+ [10611]={en="Rush Whip",zh="疾風鞭",kind=3},
+ [10612]={en="Thorn Whip",zh="荊棘鞭",kind=3},
+ [10613]={en="Whip of Affliction",zh="衰縛鞭",kind=3},
+ [10614]={en="Cursed Whip",zh="詛咒之鞭",kind=3},
+ [10615]={en="Serpent Bone Whip",zh="蛇骨鞭",kind=3},
+ [10690]={en="Abyss",zh="深淵",kind=3},
+ [10696]={en="Fire Birch+",zh="烈焰鞭·改",kind=3},
+ [10697]={en="Ancient Whip",zh="古老的鞭",kind=3},
+ [10698]={en="Fire Birch",zh="烈焰鞭",kind=3},
+ [10699]={en="Rugged Whip",zh="粗獷長鞭（暫譯）",kind=3},
+ [10700]={en="Renatus Duo",zh="雷納圖斯二型",kind=3},
+ [10701]={en="Peacemaker",zh="調解者",kind=3},
+ [10702]={en="Firefly",zh="螢火蟲",kind=3},
+ [10703]={en="Musketoon",zh="短滑膛槍",kind=3},
+ [10704]={en="Hastur Long Barrel",zh="哈斯塔長銃",kind=3},
+ [10705]={en="A-Type Sniper R",zh="A式狙擊者R",kind=3},
+ [10706]={en="Kokytos",zh="悲嘆之河",kind=3},
+ [10707]={en="Silver-Round Rifle",zh="銀玉鐵炮",kind=3},
+ [10708]={en="Culverin",zh="卡爾巴林炮",kind=3},
+ [10709]={en="Repeater Rifle",zh="連射槍",kind=3},
+ [10710]={en="Quicksilver",zh="迅銀",kind=3},
+ [10711]={en="Mythril Cannon",zh="秘銀炮",kind=3},
+ [10712]={en="Magi-Blaster",zh="魔法爆能炮",kind=3},
+ [10713]={en="Arcane Long Rifle",zh="弧光長距瞄準鏡",kind=3},
+ [10714]={en="Rune Shooter",zh="符文射手",kind=3},
+ [10715]={en="Spellfire",zh="咒焰",kind=3},
+ [10716]={en="Pulse Cannon",zh="脈衝加農炮",kind=3},
+ [10717]={en="Barrel Blazer",zh="槍管烈焰",kind=3},
+ [10718]={en="Barrier Bane",zh="護盾剋星",kind=3},
+ [10719]={en="Impetus Breaker",zh="節奏破壞者",kind=3},
+ [10720]={en="Jackpot Gun",zh="轉盤槍",kind=3},
+ [10721]={en="Gatling Gun",zh="重機關槍",kind=3},
+ [10722]={en="Loose Cannon",zh="連發射擊",kind=3},
+ [10723]={en="Ultra Magnum",zh="超級馬格南",kind=3},
+ [10790]={en="Caelum Renatum",zh="重生蒼穹",kind=3},
+ [10797]={en="Arcturus+",zh="大角星·改",kind=3},
+ [10798]={en="Ancient Firearm",zh="古老的火槍",kind=3},
+ [10799]={en="Arcturus",zh="大角星",kind=3},
+ [10800]={en="White Roselia",zh="白玫瑰之杖",kind=3},
+ [10801]={en="Mythril Rod",zh="祕銀長杖",kind=3},
+ [10802]={en="Resonate Staff",zh="共振之杖",kind=3},
+ [10803]={en="Silver Staff",zh="銀杖",kind=3},
+ [10804]={en="Vajra Staff",zh="五鈷杵錫杖",kind=3},
+ [10805]={en="Staff of the Magi",zh="賢者之杖",kind=3},
+ [10806]={en="Unyielding Staff",zh="不屈之杖",kind=3},
+ [10807]={en="Mystletainn",zh="米斯特汀",kind=3},
+ [10808]={en="Laevateinn",zh="雷瓦汀",kind=3},
+ [10809]={en="Whale Whisker",zh="鯨鬚",kind=3},
+ [10810]={en="Striking Staff",zh="強擊長杖",kind=3},
+ [10811]={en="War Pick",zh="戰鎬",kind=3},
+ [10812]={en="Iron Baton",zh="鐵製短棍",kind=3},
+ [10813]={en="Pole Mace",zh="鎚杖",kind=3},
+ [10814]={en="Battle Staff",zh="戰鬥長杖",kind=3},
+ [10815]={en="Impact Wand",zh="衝擊魔杖",kind=3},
+ [10816]={en="Rod of Focus",zh="聚能長杖",kind=3},
+ [10817]={en="Catastrophe",zh="災厄",kind=3},
+ [10818]={en="Barrier Staff",zh="護盾長杖",kind=3},
+ [10819]={en="High Caster",zh="高階施法者",kind=3},
+ [10820]={en="Seraph’s Rod",zh="熾天使魔棒",kind=3},
+ [10890]={en="Roselia",zh="羅塞莉亞",kind=3},
+ [10897]={en="Wizard’s Rod+",zh="巫師法杖·改",kind=3},
+ [10898]={en="Ancient Rod",zh="古老的魔棒",kind=3},
+ [10899]={en="Wizard’s Rod",zh="巫師法杖",kind=3},
+ [11000]={en="Leather Armor",zh="皮甲",kind=3},
+ [11001]={en="Knight’s Jacket",zh="騎士夾克",kind=3},
+ [11002]={en="Black Garb",zh="黑裝束",kind=3},
+ [11003]={en="Prickly Straitjacket",zh="荊棘束縛衣",kind=3},
+ [11004]={en="Bronze Chestplate",zh="青銅胸甲",kind=3},
+ [11005]={en="Tunic",zh="束腰衣",kind=3},
+ [11006]={en="Surcoat",zh="外衣",kind=3},
+ [11007]={en="Engineer’s Jacket",zh="工程師夾克",kind=3},
+ [11008]={en="Red Jacket",zh="赤紅外套",kind=3},
+ [11009]={en="Mythril Vest",zh="祕銀背心",kind=3},
+ [11010]={en="Rose Jacket",zh="玫瑰夾克",kind=3},
+ [11011]={en="Shinobi Gear",zh="忍者衣",kind=3},
+ [11012]={en="Power Vest",zh="力量綁帶",kind=3},
+ [11013]={en="Kenpo Gi",zh="功夫裝",kind=3},
+ [11014]={en="Brigandine",zh="布面鐵甲",kind=3},
+ [11015]={en="Crown Vest",zh="皇冠背心",kind=3},
+ [11016]={en="Diamond Chestplate",zh="鑽石胸甲",kind=3},
+ [11017]={en="Bone Mail",zh="骨鎧甲",kind=3},
+ [11018]={en="Anti-Magic Gear",zh="反魔法兵裝",kind=3},
+ [11019]={en="Astral Jacket",zh="星光夾克",kind=3},
+ [11020]={en="Rune Scales",zh="符文鱗甲",kind=3},
+ [11021]={en="Arcane Coat",zh="秘儀外套",kind=3},
+ [11022]={en="Spell Jacket",zh="咒術夾克",kind=3},
+ [11023]={en="Ninja Gear",zh="忍者裝束",kind=3},
+ [11024]={en="Hoodwink Garb",zh="欺詐之衣",kind=3},
+ [11025]={en="Mirage Jacket",zh="幻象夾克",kind=3},
+ [11026]={en="Shadowstep Garb",zh="夜行步伐",kind=3},
+ [11027]={en="Swallow Scales",zh="飛燕鱗甲",kind=3},
+ [11028]={en="Aethereal Chestplate",zh="乙太胸甲",kind=3},
+ [11029]={en="Xibalba Coat",zh="銀外套",kind=3},
+ [11030]={en="Jacket of Restoration",zh="復原夾克",kind=3},
+ [11031]={en="Scarlet Vest",zh="緋紅背心",kind=3},
+ [11032]={en="Adamite Jacket",zh="亞達邁特夾克",kind=3},
+ [11033]={en="Lorica Sancta",zh="神聖甲",kind=3},
+ [11034]={en="Chestplate of Preparation",zh="修練胸甲",kind=3},
+ [11035]={en="Blessed Cuirass",zh="招福胸甲",kind=3},
+ [11097]={en="Mirage Vest+",zh="幻影背心·改",kind=3},
+ [11098]={en="Ancient Garment",zh="古老的輕裝",kind=3},
+ [11099]={en="Mirage Vest",zh="幻影背心",kind=3},
+ [11300]={en="Stout Armor",zh="堅牢之鎧",kind=3},
+ [11301]={en="Crystal Armor",zh="水晶甲",kind=3},
+ [11302]={en="Iron Armor",zh="鋼鐵甲",kind=3},
+ [11303]={en="Silver Chestplate",zh="銀板甲",kind=3},
+ [11304]={en="Golden Armor",zh="黃金甲",kind=3},
+ [11305]={en="Shielded Armor",zh="護盾甲",kind=3},
+ [11306]={en="Phalanx",zh="方陣甲",kind=3},
+ [11307]={en="Knight Armor",zh="騎士鎧甲",kind=3},
+ [11308]={en="Lunar Plate",zh="月之板甲",kind=3},
+ [11309]={en="Carmine Armor",zh="烈火騎士鎧",kind=3},
+ [11310]={en="Glacial Armor",zh="冰天騎士鎧",kind=3},
+ [11311]={en="Polaris Cuirass",zh="極星重鎧",kind=3},
+ [11312]={en="Armor of Dusk",zh="落陽之鎧",kind=3},
+ [11313]={en="Force Armor",zh="原力鎧",kind=3},
+ [11314]={en="Diamond Armor",zh="鑽石鎧",kind=3},
+ [11315]={en="Armor of Gales",zh="風之鎧",kind=3},
+ [11316]={en="Devout’s Armor",zh="修驗者之鎧",kind=3},
+ [11317]={en="Ether Plate",zh="乙太板甲",kind=3},
+ [11318]={en="Oracle’s Armor",zh="神諭鎧",kind=3},
+ [11319]={en="Fortress Gear",zh="要塞兵裝",kind=3},
+ [11320]={en="Scale Mail",zh="鱗甲",kind=3},
+ [11321]={en="Protective Gear",zh="守衛兵裝",kind=3},
+ [11322]={en="Tyr’s Armor",zh="戰神之鎧",kind=3},
+ [11323]={en="Guardian’s Plate",zh="守護者板甲",kind=3},
+ [11324]={en="Plate of Providence",zh="護神大鎧",kind=3},
+ [11325]={en="Beast Hunter’s Armor",zh="獵獸之鎧",kind=3},
+ [11326]={en="Mythril Armor",zh="秘銀鎧",kind=3},
+ [11327]={en="Gear Plate",zh="兵裝板甲",kind=3},
+ [11328]={en="Gladiator’s Armor",zh="格拉迪烏斯之鎧",kind=3},
+ [11329]={en="Lorica Apocalyptica",zh="終焉之鎧",kind=3},
+ [11396]={en="Genji Armor",zh="源氏之鎧",kind=3},
+ [11397]={en="Tatenashi Armor+",zh="楯無之鎧·改",kind=3},
+ [11398]={en="Ancient Cuirass",zh="古老的重裝",kind=3},
+ [11399]={en="Tatenashi Armor",zh="楯無之鎧",kind=3},
+ [11500]={en="Leather Robe",zh="皮製法袍",kind=3},
+ [11501]={en="Spirit Veil",zh="精靈面紗",kind=3},
+ [11502]={en="Sorcerer’s Habit",zh="魔術師之服",kind=3},
+ [11503]={en="Cotton Robe",zh="棉布法袍",kind=3},
+ [11504]={en="White Dress",zh="純白禮服",kind=3},
+ [11505]={en="Angelic Vesture",zh="天使之衣",kind=3},
+ [11506]={en="Silk Robe",zh="絲線法袍",kind=3},
+ [11507]={en="Bard’s Tunic",zh="詩人之服",kind=3},
+ [11508]={en="Cape of the Raiju",zh="雷獸披風",kind=3},
+ [11509]={en="Lunar Eclipse Robe",zh="月蝕法袍",kind=3},
+ [11510]={en="Solar Eclipse Robe",zh="日蝕法袍",kind=3},
+ [11511]={en="Cleric’s Surplice",zh="祭司法袍",kind=3},
+ [11512]={en="Sage’s Robe",zh="賢者法袍",kind=3},
+ [11513]={en="Elegant Robe",zh="瀟灑法袍",kind=3},
+ [11514]={en="Robe of Roses",zh="玫瑰法袍",kind=3},
+ [11515]={en="Devout’s Robe",zh="導師法袍",kind=3},
+ [11516]={en="White Robe",zh="白法袍",kind=3},
+ [11517]={en="Black Robe",zh="黑法袍",kind=3},
+ [11518]={en="Gaia Gear",zh="大地之衣",kind=3},
+ [11519]={en="Minerva Bustier",zh="密涅娃馬甲",kind=3},
+ [11520]={en="Behemoth Suit",zh="凶惡巨獸套裝",kind=3},
+ [11521]={en="Protective Overcoat",zh="護身外套",kind=3},
+ [11522]={en="Aegis Robe",zh="神盾法袍",kind=3},
+ [11523]={en="Vita Cloak",zh="拜亞斗篷",kind=3},
+ [11524]={en="Guarding Gown",zh="守勢法衣",kind=3},
+ [11525]={en="Rock Cloak",zh="岩石屏障",kind=3},
+ [11526]={en="Mirage Robe",zh="幻影羽衣",kind=3},
+ [11527]={en="Phantom Robe",zh="魅影法袍",kind=3},
+ [11528]={en="Mirage Coat",zh="幻象外套",kind=3},
+ [11529]={en="Arch Robe",zh="弧光法袍",kind=3},
+ [11530]={en="Illusory Robe",zh="幻術法袍",kind=3},
+ [11531]={en="Feather Robes",zh="薄羽法袍",kind=3},
+ [11597]={en="Lordly Robes+",zh="領主長袍·改",kind=3},
+ [11598]={en="Ancient Cloak",zh="古老的披風",kind=3},
+ [11599]={en="Lordly Robes",zh="領主長袍",kind=3},
+ [12000]={en="Earrings of Health",zh="體力耳環",kind=3},
+ [12001]={en="Adept’s Armlet",zh="熟練者的手環",kind=3},
+ [12002]={en="Power Stone",zh="力量石",kind=3},
+ [12003]={en="Mage’s Glasses",zh="魔術師的眼鏡",kind=3},
+ [12004]={en="Idaten’s Shoes",zh="飛毛腿之靴",kind=3},
+ [12005]={en="Lucky Bell",zh="幸運之鈴",kind=3},
+ [12006]={en="Fire Sprite Earrings",zh="火精的穿孔耳環",kind=3},
+ [12007]={en="Ring of Retaliation",zh="反物戒指",kind=3},
+ [12008]={en="Aeolian Misanga",zh="疾風之手帶",kind=3},
+ [12009]={en="Libra Lenses",zh="偵測透鏡（暫譯）",kind=3},
+ [12010]={en="Chocobo Down Charm",zh="陸行鳥羽飾",kind=3},
+ [12011]={en="Reflect Ring",zh="反射指環",kind=3},
+ [12012]={en="Protect Ring",zh="防護指環",kind=3},
+ [12013]={en="Barrier Ring",zh="屏障指環",kind=3},
+ [12014]={en="Hermes Sandals",zh="赫密士靴",kind=3},
+ [12015]={en="Iron Sandals",zh="鐵木屐",kind=3},
+ [12016]={en="Berserker Ring",zh="怒火指環",kind=3},
+ [12017]={en="Angel Ring",zh="天使戒指",kind=3},
+ [12018]={en="Safety Bit",zh="安全別針",kind=3},
+ [12019]={en="Star Pendant",zh="星之墜飾",kind=3},
+ [12020]={en="Silver-Rimmed Glasses",zh="銀框眼鏡",kind=3},
+ [12021]={en="Power Wristbands",zh="威力護腕",kind=3},
+ [12022]={en="Bulletproof Vest",zh="防彈背心",kind=3},
+ [12023]={en="Earrings",zh="耳環",kind=3},
+ [12024]={en="Talisman",zh="辟邪護符",kind=3},
+ [12025]={en="Precognizant Beads",zh="洞察念珠",kind=3},
+ [12026]={en="Zephyr Cloak",zh="微風斗篷",kind=3},
+ [12027]={en="Gale Hairpin",zh="疾風髮簪",kind=3},
+ [12028]={en="Brigand’s Gloves",zh="盜賊護手",kind=3},
+ [12029]={en="Alarm Earrings",zh="警鈴耳釘",kind=3},
+ [12030]={en="Swift Badge",zh="迅捷徽記",kind=3},
+ [12031]={en="Poison Charm",zh="劇毒墜飾",kind=3},
+ [12032]={en="Monk’s Prayer Beads",zh="僧侶念珠",kind=3},
+ [12033]={en="Hairband",zh="髮帶",kind=3},
+ [12034]={en="Insulated Gloves",zh="絕緣手套",kind=3},
+ [12035]={en="Headband",zh="頭巾",kind=3},
+ [12036]={en="Mage’s Shard",zh="魔道士的碎片",kind=3},
+ [12037]={en="Mage’s Stone",zh="魔道士之石",kind=3},
+ [12038]={en="Philosopher’s Stone",zh="賢者之石",kind=3},
+ [12039]={en="Aquatic Veil",zh="水之面紗",kind=3},
+ [12040]={en="Jeweled Ring",zh="珠寶指環",kind=3},
+ [12041]={en="Champion’s Belt",zh="冠軍腰帶",kind=3},
+ [12042]={en="Tiara of Frost",zh="冰結頭冠",kind=3},
+ [12043]={en="Fujin’s Fuda",zh="風神護符",kind=3},
+ [12044]={en="Mole Doll",zh="土龍人偶",kind=3},
+ [12045]={en="Scintillating Ring",zh="明光戒指",kind=3},
+ [12046]={en="Silver Key",zh="銀鑰匙",kind=3},
+ [12047]={en="Trick Coin",zh="耍詐硬幣",kind=3},
+ [12048]={en="Protector’s Seal",zh="守護騎士的勛章",kind=3},
+ [12049]={en="Calm Armlet",zh="冷靜手環",kind=3},
+ [12050]={en="Knight’s Medallion",zh="騎士徽章",kind=3},
+ [12051]={en="Crest of Criticality",zh="致命紋章",kind=3},
+ [12052]={en="Blessed Pendant",zh="恩寵墜飾",kind=3},
+ [12053]={en="Chocobo Nitro",zh="陸行鳥渦輪",kind=3},
+ [12054]={en="Enchanted Ring",zh="附魔指環",kind=3},
+ [12055]={en="Amulet of Magic Absorption",zh="吸魔護身符",kind=3},
+ [12056]={en="Moonlight Ring",zh="月光戒指",kind=3},
+ [12057]={en="Hairpin of Grace",zh="慈悲的髮飾",kind=3},
+ [12058]={en="Ring of Rage",zh="憤怒指環",kind=3},
+ [12059]={en="Mastery Pendant",zh="精通墜飾",kind=3},
+ [12060]={en="Stagger Ring",zh="崩身戒指",kind=3},
+ [12061]={en="Adept’s Monocle",zh="巧匠單眼鏡",kind=3},
+ [12062]={en="Arcane Pendant",zh="魔法墜飾",kind=3},
+ [12063]={en="Vitality Charm",zh="活力墜飾",kind=3},
+ [12064]={en="Heart Anklet",zh="心之腳鏈",kind=3},
+ [12065]={en="Ribbon",zh="緞帶",kind=3},
+ [12066]={en="Warding Bell",zh="退魔之鈴",kind=3},
+ [12067]={en="Foe Attractor",zh="敵人磁鐵",kind=3},
+ [12068]={en="Warrior’s Bandana",zh="戰士頭巾",kind=3},
+ [12069]={en="Circlet of Enlightenment",zh="解脫之輪",kind=3},
+ [12070]={en="Gentleman Thief’s Monocle",zh="義賊單眼鏡",kind=3},
+ [12071]={en="Sniper’s Eye",zh="狙擊之眼",kind=3},
+ [12072]={en="Cursed Ring",zh="詛咒指環",kind=3},
+ [12073]={en="Dark Rosary",zh="邪心念珠串",kind=3},
+ [12074]={en="Scar Orb",zh="傷痕寶珠",kind=3},
+ [12075]={en="Evil Eye",zh="惡魔之眼",kind=3},
+ [12076]={en="Vampire Charm",zh="吸血墜飾",kind=3},
+ [12077]={en="Life Charm",zh="生命墜飾",kind=3},
+ [12078]={en="Solar Pendant",zh="太陽墜飾",kind=3},
+ [12079]={en="Snow Spirit’s Scarf",zh="冰精的圍巾",kind=3},
+ [12080]={en="Thunder God’s Earrings",zh="雷帝的耳環",kind=3},
+ [12081]={en="Azure Amulet",zh="藍色護身符",kind=3},
+ [12082]={en="Sylph’s Tiara",zh="風精靈寶冠",kind=3},
+ [12083]={en="Golem Core",zh="魔像之核",kind=3},
+ [12084]={en="Halo Ring",zh="光環指環",kind=3},
+ [12085]={en="Demon’s Ring",zh="惡魔指環",kind=3},
+ [12086]={en="Adamantine Beads",zh="金剛珠",kind=3},
+ [12087]={en="Anti-Magic Studs",zh="反魔穿孔耳環",kind=3},
+ [12090]={en="Mastery Ring",zh="精通指環",kind=3},
+ [12095]={en="Ultima Reactor",zh="最終究極反應爐",kind=3},
+ [12096]={en="Genji Gloves",zh="源氏護手",kind=3},
+ [12097]={en="Gold Hairpin+",zh="黃金頭飾·改",kind=3},
+ [12098]={en="Ancient Accessory",zh="古老的金飾",kind=3},
+ [12099]={en="Gold Hairpin",zh="黃金頭飾",kind=3},
+ [12100]={en="Rose Circlet",zh="紅玫瑰頭冠",kind=3},
+ [12101]={en="Super Ribbon",zh="超級緞帶",kind=3},
+ [12102]={en="Dragon Seal",zh="龍之紋章",kind=3},
+ [12103]={en="Omega Badge",zh="歐米茄勛章",kind=3},
+}
+local function itemDisplayName(id,kind)
+ local n=itemNames[id]
+ if n and n.kind==kind then return n.en.." / "..n.zh end
+ return "Unknown item / 未翻譯道具"
+end
+
+-- UE DataTable rows: sparse TMap&lt;FName, uint8*&gt; with allocation-bit checks.
+local function tableRows(s,o,expected)
+ assert(s.cname(o)=='DataTable' and s.oname(readPointer(o+0x28))==expected,'Data table changed; retry')
+ local m=o+0x30;local p=readPointer(m);local n=readInteger(m+8);local cap=readInteger(m+12)
+ assert(n and cap and n&gt;=0 and n&lt;=cap and cap&lt;=10000,'Invalid table size')
+ assert(n==0 or (p and p&gt;65536),'Invalid row data')
+ local bits=readPointer(m+0x20);if not bits or bits==0 then bits=m+0x10 end
+ local bitCount=readInteger(m+0x28);assert(bitCount and bitCount&gt;=n and bitCount&lt;=10000,'Invalid allocation flags')
+ local out={}
+ for i=0,n-1 do
+  local b=assert(readInteger(bits+math.floor(i/32)*4),'Unreadable allocation flags')
+  if (b &amp; (1 &lt;&lt; (i%32)))~=0 then
+   local a=p+i*24;local row=readPointer(a+8)
+   assert(row and row&gt;65536,'Invalid row pointer')
+   out[#out+1]={key=s.name(readInteger(a)),p=row}
+  end
+ end
+ return out
+end
+local function findTable(s,row)
+ local found
+ for _,t in ipairs(s.tables) do
+  if t.row==row then
+   assert(s.at(t.index)==t.object and s.oname(t.object)==t.name,'Table cache expired; reopen CT')
+   assert(not found,'Multiple matching tables; stop')
+   found=t.object
+  end
+ end
+ return assert(found,'Required table not loaded: '..row)
+end
+local function inventoryChoices(s)
+ local catalog={}
+ for _,kind in ipairs({'CONSUMABLES_ITEM_DATA','EQUIPMENT_ITEM_DATA'}) do
+  for _,r in ipairs(tableRows(s,findTable(s,kind),kind)) do
+   local id=readInteger(r.p+8);local typ=readBytes(r.p+0x70,1)
+   if id and id&gt;0 and (typ==1 or typ==3) and r.key~='?' then
+    assert(not catalog[id],'Duplicate item ID')
+    catalog[id]={name=itemDisplayName(id,typ),kind=typ}
+   end
+  end
+ end
+ assert(s.count&lt;=5000,'Inventory too large')
+ local out,seen={},{}
+ for i=0,s.count-1 do
+  local a=s.inventory+i*8;local id=readInteger(a);local qty=readInteger(a+4)
+  assert(id and qty and qty&gt;=0,'Invalid inventory entry')
+  local item=catalog[id]
+  if item and qty&gt;0 then
+   assert(not seen[id],'Duplicate owned item ID');seen[id]=true
+   out[#out+1]={id=id,quantity=qty,address=a,name=item.name,kind=item.kind}
+  end
+ end
+ table.sort(out,function(a,b)return a.id&lt;b.id end)
+ return out
+end
+local function setItem(s,item,target)
+ assert(target and target==math.floor(target) and target&gt;=1 and target&lt;=99,'Quantity must be 1..99')
+ local now=connect()
+ assert(now.save==s.save and now.manager==s.manager and now.inventory==s.inventory and now.count==s.count,'Inventory changed; reopen the picker')
+ assert(readInteger(item.address)==item.id and readInteger(item.address+4)==item.quantity,'Item changed during input; retry')
+ if target==item.quantity then return end
+ assert(writeInteger(item.address+4,target),'Item write failed')
+ if readInteger(item.address+4)~=target then
+  writeInteger(item.address+4,item.quantity)
+  error('Item read-back failed; attempted to restore original quantity')
+ end
+end
+local function arrayAt(a,max)
+ local p=readPointer(a);local n=readInteger(a+8);local cap=readInteger(a+12)
+ assert(n and cap and n&gt;=0 and n&lt;=cap and cap&lt;=max,'Invalid array')
+ assert(n==0 or (p and p&gt;65536),'Invalid array pointer')
+ return p,n
+end
+local function partyPlan(s)
+ local party,n=arrayAt(s.save+0x90,8);assert(n&gt;0,'No party members')
+ local units,un=arrayAt(s.save+0x60,64)
+ local byId={}
+ for i=0,un-1 do local a=units+i*0xA0;local id=readInteger(a);assert(id and not byId[id],'Invalid unit ID');byId[id]=a end
+ local definitions={}
+ for _,r in ipairs(tableRows(s,findTable(s,'UNIT_PARAMETER'),'UNIT_PARAMETER')) do definitions[readInteger(r.p+8)]={curve=readInteger(r.p+0x3C),name=r.key} end
+ local curves={}
+ for _,r in ipairs(tableRows(s,findTable(s,'UNIT_LEVEL_PARAMETER_LIST'),'UNIT_LEVEL_PARAMETER_LIST')) do curves[readInteger(r.p+8)]=readPointer(r.p+0x10) end
+ local out,seen={},{}
+ for i=0,n-1 do
+  local id=readInteger(party+i*4)
+  assert(id and id&gt;=1001 and id&lt;=1008 and not seen[id],'Unexpected party member');seen[id]=true
+  local a=assert(byId[id],'Party member missing from save');local def=assert(definitions[id],'Missing unit definition')
+  local levels={}
+  for _,r in ipairs(tableRows(s,assert(curves[def.curve],'Missing curve'),'UNIT_LEVEL_PARAMETER')) do
+   local lv=readInteger(r.p+8);local xp=readInteger(r.p+12)
+   if lv and lv&gt;=1 and lv&lt;=99 then assert(not levels[lv] and xp and xp&gt;=0,'Invalid level curve');levels[lv]=xp end
+  end
+  local sum=0;for lv=1,99 do sum=sum+assert(levels[lv],'Incomplete level curve') end
+  assert(sum&gt;0 and sum&lt;=2147483647,'Invalid level-99 EXP')
+  local old=readInteger(a+4);assert(old and old&gt;=0,'Invalid current EXP')
+  out[#out+1]={id=id,address=a,experience=old,target=sum,name=def.name,partyIndex=i}
+ end
+ return out,party,n,units
+end
+local function checkCode(a,bytes)
+ local actual=readBytes(a,#bytes,true);assert(actual,'Game function unavailable')
+ for i=1,#bytes do assert(actual[i]==bytes[i],'Game function mismatch; stop') end
+end
+local function checkLevelFunctions(s)
+ checkCode(s.base+0x523BC00,{0x48,0x8B,0xC4,0x56,0x48,0x81,0xEC,0xD0,0,0,0})
+ checkCode(s.base+0x524B3A0,{0x48,0x89,0x5C,0x24,0x18,0x48,0x89,0x74,0x24,0x20,0x57,0x48,0x81,0xEC,0xD0,1,0,0})
+end
+local function setParty99(s,plan,party,n,units)
+ checkLevelFunctions(s)
+ -- Preflight all targets with the game's own EXP-to-level calculation.
+ for _,u in ipairs(plan) do
+  assert(executeCodeEx(0,5000,s.base+0x523BC00,u.id,u.target)==99,'Game rejected level-99 threshold')
+ end
+ local report={}
+ for _,u in ipairs(plan) do
+  local now=connect();local pp,pn=arrayAt(now.save+0x90,8);local up=arrayAt(now.save+0x60,64)
+  assert(now.save==s.save and now.manager==s.manager and pp==party and pn==n and up==units,'Party/save changed; stop')
+  for _,member in ipairs(plan) do assert(readInteger(party+member.partyIndex*4)==member.id,'Party changed; stop') end
+  assert(readInteger(u.address)==u.id and readInteger(u.address+4)==u.experience,'Character EXP changed; retry')
+  if u.experience&lt;u.target then
+   -- Native SetPlayableUnitExperience(UnitId, EXP, isMaxStatusSet=false):
+   -- updates save EXP and refreshes the live character parameters/skills.
+   executeCodeEx(0,10000,s.base+0x524B3A0,u.id,u.target,0)
+   assert(readInteger(u.address+4)==u.target,'EXP update did not finish; stop and check game')
+  end
+  local xp=readInteger(u.address+4)
+  local lv=executeCodeEx(0,5000,s.base+0x523BC00,u.id,xp)
+  assert(lv==99,'Level verification failed; stop and check game')
+  report[#report+1]=string.format('%s（ID %d）：Lv.%d／EXP %d',u.name,u.id,lv,xp)
+ end
+ return report
+end
+
+local s=connect()
+local pack={
+ {10199,1,1,1},
+ {10299,1,1,2},
+ {10399,1,1,3},
+ {10498,1,1,4},
+ {10599,1,1,5},
+ {10698,1,1,8},
+ {10799,1,1,6},
+ {10899,1,1,7},
+ {11399,1,2,9},
+ {11099,1,2,10},
+ {11599,1,2,11},
+ {12099,1,3,0},
+}
+local catalog={}
+for _,r in ipairs(tableRows(s,findTable(s,'EQUIPMENT_ITEM_DATA'),'EQUIPMENT_ITEM_DATA')) do catalog[readInteger(r.p+8)]=r.p end
+checkCode(s.base+0x5107500,{0x48,0x89,0x5C,0x24,0x08,0x57,0x48,0x83,0xEC,0x20,0x8B,0xDA,0x8B,0xF9})
+local function inventoryMap(state)
+ assert(state.count&lt;=5000,'Inventory too large')
+ local map={}
+ for i=0,state.count-1 do
+  local p=state.inventory+i*8;local id=readInteger(p);local qty=readInteger(p+4)
+  assert(id and qty and qty&gt;=0 and qty&lt;=2147483647 and map[id]==nil,'Invalid/duplicate inventory record')
+  map[id]=qty
+ end
+ return map
+end
+local expected=inventoryMap(s)
+local counts={0,0,0}
+for _,v in ipairs(pack) do counts[v[3]]=counts[v[3]]+1 end
+local lines={'十二件各補足背包至少 1 件；不改試煉旗標，成就是否觸發待測。',''}
+for _,v in ipairs(pack) do
+ local row=assert(catalog[v[1]],'Equipment missing from this build')
+ assert(readBytes(row+0x70,1)==3 and readBytes(row+0x80,1)==v[3] and readBytes(row+0x81,1)==v[4],'Equipment category mismatch')
+ assert(itemNames[v[1]] and itemNames[v[1]].kind==3,'Equipment label missing')
+ lines[#lines+1]=itemDisplayName(v[1],3)..' × '..v[2]
+end
+local answer=inputQuery('一般版十二武具',table.concat(lines,'\n')..'\n\n請停在選單並備份存檔。輸入 YES 執行，取消則不修改：','')
+if not answer then return end
+assert(answer:upper()=='YES','Enter YES or cancel')
+local added=0
+for _,v in ipairs(pack) do
+ local current=connect()
+ assert(current.save==s.save and current.manager==s.manager,'Save changed; stopped (earlier grants may remain)')
+ local actual=inventoryMap(current)
+ for id,qty in pairs(expected) do assert(actual[id]==qty,'Inventory changed; stopped (earlier grants may remain)') end
+ for id,qty in pairs(actual) do assert(expected[id]==qty,'Inventory changed; stopped (earlier grants may remain)') end
+ local old=actual[v[1]] or 0
+ if old&lt;v[2] then
+  executeCodeEx(0,10000,s.base+0x5107500,v[1],v[2]-old)
+  local after=connect();assert(after.save==s.save,'Save changed after grant; stop')
+  expected[v[1]]=v[2]
+  actual=inventoryMap(after)
+  for id,qty in pairs(expected) do assert(actual[id]==qty,'Grant read-back failed; stop and check inventory') end
+  for id,qty in pairs(actual) do assert(expected[id]==qty,'Unexpected inventory change; stop and check inventory') end
+  added=added+v[2]-old
+ end
+end
+showMessage('一般版十二武具完成，本次新增 '..added..' 件。請重開裝備選單，自行選擇各角色裝備；確認後另存新欄位。')
+
+{$asm}
+[DISABLE]
+</AssemblerScript>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>19</ID>
+      <Description>"19 暫時移除佐助刀與改版（先卸裝）"</Description>
+      <VariableType>Auto Assembler Script</VariableType>
+      <AssemblerScript>[ENABLE]
+{$lua}
+if syntaxcheck then return end
+-- FFRS retail Steam build 24250053. Read-only lookup, no injected game calls.
+-- SDK reference: PolarWizard/final-fantasy-resonance-fix (MIT).
+local function connect(battleOnly)
+ local pid=assert(getProcessIDFromProcessName('FFRS-Win64-Shipping.exe'),'Resonance is not running')
+ if getOpenedProcessID()~=pid then openProcess(pid) end
+ local base=assert(getAddressSafe('FFRS-Win64-Shipping.exe'),'Game module unavailable')
+ local pe=base+readInteger(base+0x3c)
+ assert(readInteger(pe+8)==0x6A586B2F and readInteger(pe+0x50)==503013376,'Unsupported game build; stop and revalidate')
+ local pool=base+0x9CA1280
+ local names={}
+ local blocks=readInteger(pool+8)
+ assert(blocks and blocks&gt;=0 and blocks&lt;8192,'Invalid name pool')
+ local function name(id)
+  if not id or id&lt;0 then return '?' end
+  if names[id] then return names[id] end
+  local block=math.floor(id/65536);local off=(id%65536)*2
+  if block&gt;blocks then blocks=readInteger(pool+8) or -1 end
+  if block&gt;blocks or blocks&gt;=8192 then return '?' end
+  local p=readPointer(pool+0x10+block*8);if not p or p&lt;65536 then return '?' end
+  local h=readSmallInteger(p+off);if not h then return '?' end
+  if h&lt;0 then h=h+65536 end
+  local len=math.floor(h/64)
+  if len&gt;1023 then return '?' end
+  local s
+  if h%2==1 then s=readString(p+off+2,len*2,true)
+  else local b=readBytes(p+off+2,len,true);s=b and string.char(table.unpack(b)) end
+  names[id]=s or '?';return names[id]
+ end
+ assert(name(0)=='None','Name pool does not match this game')
+ local function oname(o) return o and o&gt;65536 and name(readInteger(o+0x18)) or '?' end
+ local classes={}
+ local function cname(o)
+  local c=o and readPointer(o+0x10)
+  if not c or c&lt;65536 then return '?' end
+  if not classes[c] then classes[c]=oname(c) end
+  return classes[c]
+ end
+ local world=readPointer(base+0x9AA0540)
+ assert(world and world&gt;65536 and cname(world)=='World','Wait for a loaded world')
+ local gi=readPointer(world+0x228)
+ assert(gi and gi&gt;65536,'Wait for the game instance')
+ local g=base+0x9D84DD0;local count=readInteger(g+0x14);local chunks=readPointer(g)
+ assert(count and count&gt;0 and count&lt;2000000 and chunks and chunks&gt;65536,'Invalid object array')
+ local chunkCount=readInteger(g+0x1c)
+ assert(chunkCount and chunkCount&gt;0 and chunkCount&lt;=math.ceil(2000000/65536),'Invalid object chunks')
+ local function at(i)
+  local currentCount=battleOnly and readInteger(g+0x14) or count
+  if not i or not currentCount or currentCount&gt;2000000 or i&lt;0 or i&gt;=currentCount then return nil end
+  local ch=readPointer(chunks+math.floor(i/65536)*8)
+  return ch and ch&gt;65536 and readPointer(ch+(i%65536)*24) or nil
+ end
+ -- Battle automation does not use inventory tables or save-data writes.
+ if battleOnly then return {at=at,oname=oname,cname=cname,name=name,pid=pid,base=base} end
+ local function ismanager(o)
+  if not o or o&lt;65536 then return false end
+  local flags=readInteger(o+8)
+  return flags and (flags &amp; 0x10)==0 and cname(o)=='CPP_MuchaSaveDataManager' and readPointer(o+0x20)==gi
+ end
+ local cached=_G.FFRS_CT_SESSION
+ local manager,index
+ local tables={}
+ if cached and cached.pid==pid and cached.base==base and at(cached.index)==cached.manager and ismanager(cached.manager) and cached.tables then
+  manager,index=cached.manager,cached.index
+  tables=cached.tables
+ else
+  for i=0,count-1 do
+   local o=at(i)
+   if o and o&gt;65536 and cname(o)=='DataTable' then
+    local row=readPointer(o+0x28)
+    local rn=oname(row)
+    if rn=='CONSUMABLES_ITEM_DATA' or rn=='EQUIPMENT_ITEM_DATA' or rn=='UNIT_PARAMETER' or rn=='UNIT_LEVEL_PARAMETER_LIST' then
+     tables[#tables+1]={object=o,index=i,row=rn,name=oname(o)}
+    end
+   end
+   if ismanager(o) then assert(not manager,'Multiple active save managers; stop');manager,index=o,i end
+  end
+ end
+ assert(manager,'Active save manager not found; load a save first')
+ local save=readPointer(manager+0x60)
+ assert(save and save&gt;65536 and cname(save)=='CPP_MuchaGameSaveData','Active save data unavailable')
+ local flags=readInteger(save+8);assert(flags and (flags &amp; 0x10)==0,'Default object is not a save')
+ local gil=readInteger(save+0x28)
+ assert(gil and gil&gt;=0 and gil&lt;=2147483647,'Invalid money value')
+ local inv=readPointer(save+0xA8);local n=readInteger(save+0xB0);local cap=readInteger(save+0xB4)
+ assert(n and cap and n&gt;=0 and n&lt;=cap and cap&lt;=100000,'Invalid inventory array')
+ assert(n==0 or (inv and inv&gt;65536),'Invalid inventory pointer')
+ _G.FFRS_CT_SESSION={pid=pid,base=base,manager=manager,index=index,tables=tables}
+ return {at=at,oname=oname,cname=cname,name=name,tables=tables,pid=pid,base=base,manager=manager,save=save,gil=gil,inventory=inv,count=n,capacity=cap}
+end
+
+
+local backupDir=assert(os.getenv('TEMP') or os.getenv('TMP'),'Cannot locate temporary backup directory')
+local backupPath=backupDir..[[\FFRS-sasuke-quantity-backup.txt]]
+print('FFRS backup: '..backupPath)
+local s=connect()
+local ids={[10297]=true,[10299]=true}
+local rows={}
+for i=0,s.count-1 do
+ local a=s.inventory+i*8; local id=readInteger(a)
+ if ids[id] or id==10298 then
+  assert(not rows[id],'Duplicate inventory ID')
+  local q=readInteger(a+4);assert(q and q&gt;=0 and q&lt;100000,'Invalid quantity')
+  rows[id]={a=a,q=q}
+ end
+end
+assert(rows[10298] and rows[10298].q&gt;0,'先用 17 補入古老的刀')
+assert(not _G.FFRS_SASUKE_BACKUP,'已有備份，請先用 20 還原')
+showMessage('請先確認所有角色已卸下佐助刀／佐助刀·改，並停在選單。此操作只清空這兩件的背包數量。')
+local b={save=s.save,pid=s.pid,values={}}
+for id in pairs(ids) do if rows[id] then b.values[id]=rows[id].q end end
+local f=assert(io.open(backupPath,'a'))
+f:write(os.date(), ' save=',tostring(s.save),' pid=',tostring(s.pid),'\n')
+for id,q in pairs(b.values) do f:write(id,' ',q,'\n') end
+f:close()
+_G.FFRS_SASUKE_BACKUP=b
+for id in pairs(b.values) do
+ assert(readInteger(rows[id].a)==id and readInteger(rows[id].a+4)==b.values[id],'Inventory changed')
+ assert(writeInteger(rows[id].a+4,0) and readInteger(rows[id].a+4)==0,'Write failed; use 20 to restore')
+end
+showMessage('兩種佐助刀背包數量已暫時設為 0；古老的刀保留。離開房間再進入測試。用 20 還原。')
+
+{$asm}
+[DISABLE]
+</AssemblerScript>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>20</ID>
+      <Description>"20 還原佐助刀原數量"</Description>
+      <VariableType>Auto Assembler Script</VariableType>
+      <AssemblerScript>[ENABLE]
+{$lua}
+if syntaxcheck then return end
+-- FFRS retail Steam build 24250053. Read-only lookup, no injected game calls.
+-- SDK reference: PolarWizard/final-fantasy-resonance-fix (MIT).
+local function connect(battleOnly)
+ local pid=assert(getProcessIDFromProcessName('FFRS-Win64-Shipping.exe'),'Resonance is not running')
+ if getOpenedProcessID()~=pid then openProcess(pid) end
+ local base=assert(getAddressSafe('FFRS-Win64-Shipping.exe'),'Game module unavailable')
+ local pe=base+readInteger(base+0x3c)
+ assert(readInteger(pe+8)==0x6A586B2F and readInteger(pe+0x50)==503013376,'Unsupported game build; stop and revalidate')
+ local pool=base+0x9CA1280
+ local names={}
+ local blocks=readInteger(pool+8)
+ assert(blocks and blocks&gt;=0 and blocks&lt;8192,'Invalid name pool')
+ local function name(id)
+  if not id or id&lt;0 then return '?' end
+  if names[id] then return names[id] end
+  local block=math.floor(id/65536);local off=(id%65536)*2
+  if block&gt;blocks then blocks=readInteger(pool+8) or -1 end
+  if block&gt;blocks or blocks&gt;=8192 then return '?' end
+  local p=readPointer(pool+0x10+block*8);if not p or p&lt;65536 then return '?' end
+  local h=readSmallInteger(p+off);if not h then return '?' end
+  if h&lt;0 then h=h+65536 end
+  local len=math.floor(h/64)
+  if len&gt;1023 then return '?' end
+  local s
+  if h%2==1 then s=readString(p+off+2,len*2,true)
+  else local b=readBytes(p+off+2,len,true);s=b and string.char(table.unpack(b)) end
+  names[id]=s or '?';return names[id]
+ end
+ assert(name(0)=='None','Name pool does not match this game')
+ local function oname(o) return o and o&gt;65536 and name(readInteger(o+0x18)) or '?' end
+ local classes={}
+ local function cname(o)
+  local c=o and readPointer(o+0x10)
+  if not c or c&lt;65536 then return '?' end
+  if not classes[c] then classes[c]=oname(c) end
+  return classes[c]
+ end
+ local world=readPointer(base+0x9AA0540)
+ assert(world and world&gt;65536 and cname(world)=='World','Wait for a loaded world')
+ local gi=readPointer(world+0x228)
+ assert(gi and gi&gt;65536,'Wait for the game instance')
+ local g=base+0x9D84DD0;local count=readInteger(g+0x14);local chunks=readPointer(g)
+ assert(count and count&gt;0 and count&lt;2000000 and chunks and chunks&gt;65536,'Invalid object array')
+ local chunkCount=readInteger(g+0x1c)
+ assert(chunkCount and chunkCount&gt;0 and chunkCount&lt;=math.ceil(2000000/65536),'Invalid object chunks')
+ local function at(i)
+  local currentCount=battleOnly and readInteger(g+0x14) or count
+  if not i or not currentCount or currentCount&gt;2000000 or i&lt;0 or i&gt;=currentCount then return nil end
+  local ch=readPointer(chunks+math.floor(i/65536)*8)
+  return ch and ch&gt;65536 and readPointer(ch+(i%65536)*24) or nil
+ end
+ -- Battle automation does not use inventory tables or save-data writes.
+ if battleOnly then return {at=at,oname=oname,cname=cname,name=name,pid=pid,base=base} end
+ local function ismanager(o)
+  if not o or o&lt;65536 then return false end
+  local flags=readInteger(o+8)
+  return flags and (flags &amp; 0x10)==0 and cname(o)=='CPP_MuchaSaveDataManager' and readPointer(o+0x20)==gi
+ end
+ local cached=_G.FFRS_CT_SESSION
+ local manager,index
+ local tables={}
+ if cached and cached.pid==pid and cached.base==base and at(cached.index)==cached.manager and ismanager(cached.manager) and cached.tables then
+  manager,index=cached.manager,cached.index
+  tables=cached.tables
+ else
+  for i=0,count-1 do
+   local o=at(i)
+   if o and o&gt;65536 and cname(o)=='DataTable' then
+    local row=readPointer(o+0x28)
+    local rn=oname(row)
+    if rn=='CONSUMABLES_ITEM_DATA' or rn=='EQUIPMENT_ITEM_DATA' or rn=='UNIT_PARAMETER' or rn=='UNIT_LEVEL_PARAMETER_LIST' then
+     tables[#tables+1]={object=o,index=i,row=rn,name=oname(o)}
+    end
+   end
+   if ismanager(o) then assert(not manager,'Multiple active save managers; stop');manager,index=o,i end
+  end
+ end
+ assert(manager,'Active save manager not found; load a save first')
+ local save=readPointer(manager+0x60)
+ assert(save and save&gt;65536 and cname(save)=='CPP_MuchaGameSaveData','Active save data unavailable')
+ local flags=readInteger(save+8);assert(flags and (flags &amp; 0x10)==0,'Default object is not a save')
+ local gil=readInteger(save+0x28)
+ assert(gil and gil&gt;=0 and gil&lt;=2147483647,'Invalid money value')
+ local inv=readPointer(save+0xA8);local n=readInteger(save+0xB0);local cap=readInteger(save+0xB4)
+ assert(n and cap and n&gt;=0 and n&lt;=cap and cap&lt;=100000,'Invalid inventory array')
+ assert(n==0 or (inv and inv&gt;65536),'Invalid inventory pointer')
+ _G.FFRS_CT_SESSION={pid=pid,base=base,manager=manager,index=index,tables=tables}
+ return {at=at,oname=oname,cname=cname,name=name,tables=tables,pid=pid,base=base,manager=manager,save=save,gil=gil,inventory=inv,count=n,capacity=cap}
+end
+
+
+local s=connect()
+local ids={[10297]=true,[10299]=true}
+local rows={}
+for i=0,s.count-1 do
+ local a=s.inventory+i*8; local id=readInteger(a)
+ if ids[id] or id==10298 then
+  assert(not rows[id],'Duplicate inventory ID')
+  local q=readInteger(a+4);assert(q and q&gt;=0 and q&lt;100000,'Invalid quantity')
+  rows[id]={a=a,q=q}
+ end
+end
+local b=assert(_G.FFRS_SASUKE_BACKUP,'本次 CE 沒有備份，請勿猜測數量')
+assert(b.save==s.save and b.pid==s.pid,'Save/process changed; stop')
+for id,q in pairs(b.values) do assert(rows[id] and rows[id].q==0,'Quantity changed after test; do not overwrite') end
+for id,q in pairs(b.values) do assert(writeInteger(rows[id].a+4,q) and readInteger(rows[id].a+4)==q,'Restore failed') end
+_G.FFRS_SASUKE_BACKUP=nil
+showMessage('兩種佐助刀已還原原數量。')
+
+{$asm}
+[DISABLE]
+</AssemblerScript>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>21</ID>
+      <Description>"21 清空十二武具一般版與改版（保留古老版）"</Description>
+      <VariableType>Auto Assembler Script</VariableType>
+      <AssemblerScript>[ENABLE]
+{$lua}
+if syntaxcheck then return end
+-- FFRS retail Steam build 24250053. Read-only lookup, no injected game calls.
+-- SDK reference: PolarWizard/final-fantasy-resonance-fix (MIT).
+local function connect(battleOnly)
+ local pid=assert(getProcessIDFromProcessName('FFRS-Win64-Shipping.exe'),'Resonance is not running')
+ if getOpenedProcessID()~=pid then openProcess(pid) end
+ local base=assert(getAddressSafe('FFRS-Win64-Shipping.exe'),'Game module unavailable')
+ local pe=base+readInteger(base+0x3c)
+ assert(readInteger(pe+8)==0x6A586B2F and readInteger(pe+0x50)==503013376,'Unsupported game build; stop and revalidate')
+ local pool=base+0x9CA1280
+ local names={}
+ local blocks=readInteger(pool+8)
+ assert(blocks and blocks&gt;=0 and blocks&lt;8192,'Invalid name pool')
+ local function name(id)
+  if not id or id&lt;0 then return '?' end
+  if names[id] then return names[id] end
+  local block=math.floor(id/65536);local off=(id%65536)*2
+  if block&gt;blocks then blocks=readInteger(pool+8) or -1 end
+  if block&gt;blocks or blocks&gt;=8192 then return '?' end
+  local p=readPointer(pool+0x10+block*8);if not p or p&lt;65536 then return '?' end
+  local h=readSmallInteger(p+off);if not h then return '?' end
+  if h&lt;0 then h=h+65536 end
+  local len=math.floor(h/64)
+  if len&gt;1023 then return '?' end
+  local s
+  if h%2==1 then s=readString(p+off+2,len*2,true)
+  else local b=readBytes(p+off+2,len,true);s=b and string.char(table.unpack(b)) end
+  names[id]=s or '?';return names[id]
+ end
+ assert(name(0)=='None','Name pool does not match this game')
+ local function oname(o) return o and o&gt;65536 and name(readInteger(o+0x18)) or '?' end
+ local classes={}
+ local function cname(o)
+  local c=o and readPointer(o+0x10)
+  if not c or c&lt;65536 then return '?' end
+  if not classes[c] then classes[c]=oname(c) end
+  return classes[c]
+ end
+ local world=readPointer(base+0x9AA0540)
+ assert(world and world&gt;65536 and cname(world)=='World','Wait for a loaded world')
+ local gi=readPointer(world+0x228)
+ assert(gi and gi&gt;65536,'Wait for the game instance')
+ local g=base+0x9D84DD0;local count=readInteger(g+0x14);local chunks=readPointer(g)
+ assert(count and count&gt;0 and count&lt;2000000 and chunks and chunks&gt;65536,'Invalid object array')
+ local chunkCount=readInteger(g+0x1c)
+ assert(chunkCount and chunkCount&gt;0 and chunkCount&lt;=math.ceil(2000000/65536),'Invalid object chunks')
+ local function at(i)
+  local currentCount=battleOnly and readInteger(g+0x14) or count
+  if not i or not currentCount or currentCount&gt;2000000 or i&lt;0 or i&gt;=currentCount then return nil end
+  local ch=readPointer(chunks+math.floor(i/65536)*8)
+  return ch and ch&gt;65536 and readPointer(ch+(i%65536)*24) or nil
+ end
+ -- Battle automation does not use inventory tables or save-data writes.
+ if battleOnly then return {at=at,oname=oname,cname=cname,name=name,pid=pid,base=base} end
+ local function ismanager(o)
+  if not o or o&lt;65536 then return false end
+  local flags=readInteger(o+8)
+  return flags and (flags &amp; 0x10)==0 and cname(o)=='CPP_MuchaSaveDataManager' and readPointer(o+0x20)==gi
+ end
+ local cached=_G.FFRS_CT_SESSION
+ local manager,index
+ local tables={}
+ if cached and cached.pid==pid and cached.base==base and at(cached.index)==cached.manager and ismanager(cached.manager) and cached.tables then
+  manager,index=cached.manager,cached.index
+  tables=cached.tables
+ else
+  for i=0,count-1 do
+   local o=at(i)
+   if o and o&gt;65536 and cname(o)=='DataTable' then
+    local row=readPointer(o+0x28)
+    local rn=oname(row)
+    if rn=='CONSUMABLES_ITEM_DATA' or rn=='EQUIPMENT_ITEM_DATA' or rn=='UNIT_PARAMETER' or rn=='UNIT_LEVEL_PARAMETER_LIST' then
+     tables[#tables+1]={object=o,index=i,row=rn,name=oname(o)}
+    end
+   end
+   if ismanager(o) then assert(not manager,'Multiple active save managers; stop');manager,index=o,i end
+  end
+ end
+ assert(manager,'Active save manager not found; load a save first')
+ local save=readPointer(manager+0x60)
+ assert(save and save&gt;65536 and cname(save)=='CPP_MuchaGameSaveData','Active save data unavailable')
+ local flags=readInteger(save+8);assert(flags and (flags &amp; 0x10)==0,'Default object is not a save')
+ local gil=readInteger(save+0x28)
+ assert(gil and gil&gt;=0 and gil&lt;=2147483647,'Invalid money value')
+ local inv=readPointer(save+0xA8);local n=readInteger(save+0xB0);local cap=readInteger(save+0xB4)
+ assert(n and cap and n&gt;=0 and n&lt;=cap and cap&lt;=100000,'Invalid inventory array')
+ assert(n==0 or (inv and inv&gt;65536),'Invalid inventory pointer')
+ _G.FFRS_CT_SESSION={pid=pid,base=base,manager=manager,index=index,tables=tables}
+ return {at=at,oname=oname,cname=cname,name=name,tables=tables,pid=pid,base=base,manager=manager,save=save,gil=gil,inventory=inv,count=n,capacity=cap}
+end
+
+
+local backupDir=assert(os.getenv('TEMP') or os.getenv('TMP'),'Cannot locate temporary backup directory')
+local backupPath=backupDir..[[\FFRS-all-arms-quantity-backup.txt]]
+print('FFRS backup: '..backupPath)
+local s=connect()
+local ids={[10197]=true,[10199]=true,[10297]=true,[10299]=true,[10397]=true,[10399]=true,[10496]=true,[10498]=true,[10597]=true,[10599]=true,[10696]=true,[10698]=true,[10797]=true,[10799]=true,[10897]=true,[10899]=true,[11397]=true,[11399]=true,[11097]=true,[11099]=true,[11597]=true,[11599]=true,[12097]=true,[12099]=true}
+local rows={}
+assert(s.count&lt;=5000,'Inventory too large')
+for i=0,s.count-1 do
+ local a=s.inventory+i*8;local id=readInteger(a)
+ if ids[id] then
+  assert(not rows[id],'Duplicate item');local q=readInteger(a+4)
+  assert(q and q&gt;=0 and q&lt;100000,'Invalid quantity');rows[id]={a=a,q=q}
+ end
+end
+assert(not _G.FFRS_ALL_ARMS_BACKUP,'已有備份；請先還原')
+local b={save=s.save,pid=s.pid,values={}}
+for id,r in pairs(rows) do b.values[id]=r.q end
+-- Retain the earlier Sasuke backup so its removed upgraded blade is not lost.
+local previous=_G.FFRS_SASUKE_BACKUP
+if previous then
+ assert(previous.save==s.save and previous.pid==s.pid,'Earlier backup belongs to a different save')
+ for id,q in pairs(previous.values) do b.values[id]=math.max(b.values[id] or 0,q) end
+end
+local f=assert(io.open(backupPath,'a'))
+f:write(os.date(),' save=',tostring(s.save),' pid=',tostring(s.pid),'\n')
+for id,q in pairs(b.values) do f:write(id,' ',q,'\n') end
+f:close()
+local now=connect();assert(now.save==s.save and now.inventory==s.inventory and now.count==s.count,'Inventory changed')
+for id,r in pairs(rows) do assert(readInteger(r.a)==id and readInteger(r.a+4)==r.q,'Quantity changed') end
+_G.FFRS_ALL_ARMS_BACKUP=b
+for id,r in pairs(rows) do assert(writeInteger(r.a+4,0) and readInteger(r.a+4)==0,'Write failed; use 22 to restore') end
+_G.FFRS_SASUKE_BACKUP=nil
+showMessage('十二武具的一般版與改版已清空背包數量。古老版保留。請離開房間再進入；22 可補回原數量。')
+
+{$asm}
+[DISABLE]
+</AssemblerScript>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>22</ID>
+      <Description>"22 還原十二武具（保留新取得物品）"</Description>
+      <VariableType>Auto Assembler Script</VariableType>
+      <AssemblerScript>[ENABLE]
+{$lua}
+if syntaxcheck then return end
+-- FFRS retail Steam build 24250053. Read-only lookup, no injected game calls.
+-- SDK reference: PolarWizard/final-fantasy-resonance-fix (MIT).
+local function connect(battleOnly)
+ local pid=assert(getProcessIDFromProcessName('FFRS-Win64-Shipping.exe'),'Resonance is not running')
+ if getOpenedProcessID()~=pid then openProcess(pid) end
+ local base=assert(getAddressSafe('FFRS-Win64-Shipping.exe'),'Game module unavailable')
+ local pe=base+readInteger(base+0x3c)
+ assert(readInteger(pe+8)==0x6A586B2F and readInteger(pe+0x50)==503013376,'Unsupported game build; stop and revalidate')
+ local pool=base+0x9CA1280
+ local names={}
+ local blocks=readInteger(pool+8)
+ assert(blocks and blocks&gt;=0 and blocks&lt;8192,'Invalid name pool')
+ local function name(id)
+  if not id or id&lt;0 then return '?' end
+  if names[id] then return names[id] end
+  local block=math.floor(id/65536);local off=(id%65536)*2
+  if block&gt;blocks then blocks=readInteger(pool+8) or -1 end
+  if block&gt;blocks or blocks&gt;=8192 then return '?' end
+  local p=readPointer(pool+0x10+block*8);if not p or p&lt;65536 then return '?' end
+  local h=readSmallInteger(p+off);if not h then return '?' end
+  if h&lt;0 then h=h+65536 end
+  local len=math.floor(h/64)
+  if len&gt;1023 then return '?' end
+  local s
+  if h%2==1 then s=readString(p+off+2,len*2,true)
+  else local b=readBytes(p+off+2,len,true);s=b and string.char(table.unpack(b)) end
+  names[id]=s or '?';return names[id]
+ end
+ assert(name(0)=='None','Name pool does not match this game')
+ local function oname(o) return o and o&gt;65536 and name(readInteger(o+0x18)) or '?' end
+ local classes={}
+ local function cname(o)
+  local c=o and readPointer(o+0x10)
+  if not c or c&lt;65536 then return '?' end
+  if not classes[c] then classes[c]=oname(c) end
+  return classes[c]
+ end
+ local world=readPointer(base+0x9AA0540)
+ assert(world and world&gt;65536 and cname(world)=='World','Wait for a loaded world')
+ local gi=readPointer(world+0x228)
+ assert(gi and gi&gt;65536,'Wait for the game instance')
+ local g=base+0x9D84DD0;local count=readInteger(g+0x14);local chunks=readPointer(g)
+ assert(count and count&gt;0 and count&lt;2000000 and chunks and chunks&gt;65536,'Invalid object array')
+ local chunkCount=readInteger(g+0x1c)
+ assert(chunkCount and chunkCount&gt;0 and chunkCount&lt;=math.ceil(2000000/65536),'Invalid object chunks')
+ local function at(i)
+  local currentCount=battleOnly and readInteger(g+0x14) or count
+  if not i or not currentCount or currentCount&gt;2000000 or i&lt;0 or i&gt;=currentCount then return nil end
+  local ch=readPointer(chunks+math.floor(i/65536)*8)
+  return ch and ch&gt;65536 and readPointer(ch+(i%65536)*24) or nil
+ end
+ -- Battle automation does not use inventory tables or save-data writes.
+ if battleOnly then return {at=at,oname=oname,cname=cname,name=name,pid=pid,base=base} end
+ local function ismanager(o)
+  if not o or o&lt;65536 then return false end
+  local flags=readInteger(o+8)
+  return flags and (flags &amp; 0x10)==0 and cname(o)=='CPP_MuchaSaveDataManager' and readPointer(o+0x20)==gi
+ end
+ local cached=_G.FFRS_CT_SESSION
+ local manager,index
+ local tables={}
+ if cached and cached.pid==pid and cached.base==base and at(cached.index)==cached.manager and ismanager(cached.manager) and cached.tables then
+  manager,index=cached.manager,cached.index
+  tables=cached.tables
+ else
+  for i=0,count-1 do
+   local o=at(i)
+   if o and o&gt;65536 and cname(o)=='DataTable' then
+    local row=readPointer(o+0x28)
+    local rn=oname(row)
+    if rn=='CONSUMABLES_ITEM_DATA' or rn=='EQUIPMENT_ITEM_DATA' or rn=='UNIT_PARAMETER' or rn=='UNIT_LEVEL_PARAMETER_LIST' then
+     tables[#tables+1]={object=o,index=i,row=rn,name=oname(o)}
+    end
+   end
+   if ismanager(o) then assert(not manager,'Multiple active save managers; stop');manager,index=o,i end
+  end
+ end
+ assert(manager,'Active save manager not found; load a save first')
+ local save=readPointer(manager+0x60)
+ assert(save and save&gt;65536 and cname(save)=='CPP_MuchaGameSaveData','Active save data unavailable')
+ local flags=readInteger(save+8);assert(flags and (flags &amp; 0x10)==0,'Default object is not a save')
+ local gil=readInteger(save+0x28)
+ assert(gil and gil&gt;=0 and gil&lt;=2147483647,'Invalid money value')
+ local inv=readPointer(save+0xA8);local n=readInteger(save+0xB0);local cap=readInteger(save+0xB4)
+ assert(n and cap and n&gt;=0 and n&lt;=cap and cap&lt;=100000,'Invalid inventory array')
+ assert(n==0 or (inv and inv&gt;65536),'Invalid inventory pointer')
+ _G.FFRS_CT_SESSION={pid=pid,base=base,manager=manager,index=index,tables=tables}
+ return {at=at,oname=oname,cname=cname,name=name,tables=tables,pid=pid,base=base,manager=manager,save=save,gil=gil,inventory=inv,count=n,capacity=cap}
+end
+
+
+local s=connect()
+local ids={[10197]=true,[10199]=true,[10297]=true,[10299]=true,[10397]=true,[10399]=true,[10496]=true,[10498]=true,[10597]=true,[10599]=true,[10696]=true,[10698]=true,[10797]=true,[10799]=true,[10897]=true,[10899]=true,[11397]=true,[11399]=true,[11097]=true,[11099]=true,[11597]=true,[11599]=true,[12097]=true,[12099]=true}
+local rows={}
+assert(s.count&lt;=5000,'Inventory too large')
+for i=0,s.count-1 do
+ local a=s.inventory+i*8;local id=readInteger(a)
+ if ids[id] then
+  assert(not rows[id],'Duplicate item');local q=readInteger(a+4)
+  assert(q and q&gt;=0 and q&lt;100000,'Invalid quantity');rows[id]={a=a,q=q}
+ end
+end
+local b=assert(_G.FFRS_ALL_ARMS_BACKUP,'本次 CE 沒有整套備份')
+assert(b.save==s.save and b.pid==s.pid,'Save/process changed')
+for id,q in pairs(b.values) do assert(rows[id],'Inventory entry missing; stop') end
+local now=connect();assert(now.save==s.save and now.inventory==s.inventory and now.count==s.count,'Inventory changed')
+for id,r in pairs(rows) do assert(readInteger(r.a)==id and readInteger(r.a+4)==r.q,'Quantity changed') end
+for id,q in pairs(b.values) do
+ local r=rows[id];local target=math.max(r.q,q)
+ assert(writeInteger(r.a+4,target) and readInteger(r.a+4)==target,'Restore failed')
+end
+_G.FFRS_ALL_ARMS_BACKUP=nil
+showMessage('已補回原數量，保留測試後新取得的武具。')
+
+{$asm}
+[DISABLE]
+</AssemblerScript>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>23</ID>
+      <Description>"23 一擊 BREAK（自製 Lua／實測中）"</Description>
+      <VariableType>Auto Assembler Script</VariableType>
+      <AssemblerScript>[ENABLE]
+{$lua}
+if syntaxcheck then return end
+-- FFRS retail Steam build 24250053. Read-only lookup, no injected game calls.
+-- SDK reference: PolarWizard/final-fantasy-resonance-fix (MIT).
+local function connect(battleOnly)
+ local pid=assert(getProcessIDFromProcessName('FFRS-Win64-Shipping.exe'),'Resonance is not running')
+ if getOpenedProcessID()~=pid then openProcess(pid) end
+ local base=assert(getAddressSafe('FFRS-Win64-Shipping.exe'),'Game module unavailable')
+ local pe=base+readInteger(base+0x3c)
+ assert(readInteger(pe+8)==0x6A586B2F and readInteger(pe+0x50)==503013376,'Unsupported game build; stop and revalidate')
+ local pool=base+0x9CA1280
+ local names={}
+ local blocks=readInteger(pool+8)
+ assert(blocks and blocks&gt;=0 and blocks&lt;8192,'Invalid name pool')
+ local function name(id)
+  if not id or id&lt;0 then return '?' end
+  if names[id] then return names[id] end
+  local block=math.floor(id/65536);local off=(id%65536)*2
+  if block&gt;blocks then blocks=readInteger(pool+8) or -1 end
+  if block&gt;blocks or blocks&gt;=8192 then return '?' end
+  local p=readPointer(pool+0x10+block*8);if not p or p&lt;65536 then return '?' end
+  local h=readSmallInteger(p+off);if not h then return '?' end
+  if h&lt;0 then h=h+65536 end
+  local len=math.floor(h/64)
+  if len&gt;1023 then return '?' end
+  local s
+  if h%2==1 then s=readString(p+off+2,len*2,true)
+  else local b=readBytes(p+off+2,len,true);s=b and string.char(table.unpack(b)) end
+  names[id]=s or '?';return names[id]
+ end
+ assert(name(0)=='None','Name pool does not match this game')
+ local function oname(o) return o and o&gt;65536 and name(readInteger(o+0x18)) or '?' end
+ local classes={}
+ local function cname(o)
+  local c=o and readPointer(o+0x10)
+  if not c or c&lt;65536 then return '?' end
+  if not classes[c] then classes[c]=oname(c) end
+  return classes[c]
+ end
+ local world=readPointer(base+0x9AA0540)
+ assert(world and world&gt;65536 and cname(world)=='World','Wait for a loaded world')
+ local gi=readPointer(world+0x228)
+ assert(gi and gi&gt;65536,'Wait for the game instance')
+ local g=base+0x9D84DD0;local count=readInteger(g+0x14);local chunks=readPointer(g)
+ assert(count and count&gt;0 and count&lt;2000000 and chunks and chunks&gt;65536,'Invalid object array')
+ local chunkCount=readInteger(g+0x1c)
+ assert(chunkCount and chunkCount&gt;0 and chunkCount&lt;=math.ceil(2000000/65536),'Invalid object chunks')
+ local function at(i)
+  local currentCount=battleOnly and readInteger(g+0x14) or count
+  if not i or not currentCount or currentCount&gt;2000000 or i&lt;0 or i&gt;=currentCount then return nil end
+  local ch=readPointer(chunks+math.floor(i/65536)*8)
+  return ch and ch&gt;65536 and readPointer(ch+(i%65536)*24) or nil
+ end
+ -- Battle automation does not use inventory tables or save-data writes.
+ if battleOnly then return {at=at,oname=oname,cname=cname,name=name,pid=pid,base=base} end
+ local function ismanager(o)
+  if not o or o&lt;65536 then return false end
+  local flags=readInteger(o+8)
+  return flags and (flags &amp; 0x10)==0 and cname(o)=='CPP_MuchaSaveDataManager' and readPointer(o+0x20)==gi
+ end
+ local cached=_G.FFRS_CT_SESSION
+ local manager,index
+ local tables={}
+ if cached and cached.pid==pid and cached.base==base and at(cached.index)==cached.manager and ismanager(cached.manager) and cached.tables then
+  manager,index=cached.manager,cached.index
+  tables=cached.tables
+ else
+  for i=0,count-1 do
+   local o=at(i)
+   if o and o&gt;65536 and cname(o)=='DataTable' then
+    local row=readPointer(o+0x28)
+    local rn=oname(row)
+    if rn=='CONSUMABLES_ITEM_DATA' or rn=='EQUIPMENT_ITEM_DATA' or rn=='UNIT_PARAMETER' or rn=='UNIT_LEVEL_PARAMETER_LIST' then
+     tables[#tables+1]={object=o,index=i,row=rn,name=oname(o)}
+    end
+   end
+   if ismanager(o) then assert(not manager,'Multiple active save managers; stop');manager,index=o,i end
+  end
+ end
+ assert(manager,'Active save manager not found; load a save first')
+ local save=readPointer(manager+0x60)
+ assert(save and save&gt;65536 and cname(save)=='CPP_MuchaGameSaveData','Active save data unavailable')
+ local flags=readInteger(save+8);assert(flags and (flags &amp; 0x10)==0,'Default object is not a save')
+ local gil=readInteger(save+0x28)
+ assert(gil and gil&gt;=0 and gil&lt;=2147483647,'Invalid money value')
+ local inv=readPointer(save+0xA8);local n=readInteger(save+0xB0);local cap=readInteger(save+0xB4)
+ assert(n and cap and n&gt;=0 and n&lt;=cap and cap&lt;=100000,'Invalid inventory array')
+ assert(n==0 or (inv and inv&gt;65536),'Invalid inventory pointer')
+ _G.FFRS_CT_SESSION={pid=pid,base=base,manager=manager,index=index,tables=tables}
+ return {at=at,oname=oname,cname=cname,name=name,tables=tables,pid=pid,base=base,manager=manager,save=save,gil=gil,inventory=inv,count=n,capacity=cap}
+end
+
+-- Validated links for Steam build 24250053; no process-wide pointer scan.
+local function battleDirectLinks(s,b)
+ local cached={}
+ local function subsystem(owner,offset,wanted)
+  if not b.live(owner) then return end
+  local old=cached[wanted]
+  if old and old.owner==owner and b.live(old.object)==old.identity and readPointer(old.object+0x20)==owner then return old.object end
+  cached[wanted]=nil
+  local m=owner+offset;local p=readPointer(m)
+  local n,cap=readInteger(m+8),readInteger(m+12)
+  local bits,count=readPointer(m+0x20),readInteger(m+0x28)
+  if not p or p&lt;65536 or not n or not cap or n&lt;0 or n&gt;cap or cap&gt;256 or not count or count&lt;n or count&gt;256 then return end
+  if not bits or bits==0 then bits=m+0x10 end
+  for i=0,n-1 do
+   local flags=readInteger(bits+math.floor(i/32)*4)
+   if not flags then return end
+   if (flags &amp; (1&lt;&lt;(i%32)))~=0 then
+    local key=readPointer(p+i*24);local value=readPointer(p+i*24+8)
+    if b.live(key,true) and s.oname(key)==wanted and b.live(value) and b.isa(value,key) and readPointer(value+0x20)==owner then
+     cached[wanted]={owner=owner,object=value,identity=b.live(value)};return value
+    end
+   end
+  end
+ end
+ local function accept(o,class,cache)
+  local identity=b.live(o)
+  if not identity or not b.isa(o,class) then return end
+  cache[o]=identity;b.reflectClass(readPointer(o+16));return o
+ end
+ local function weak(address)
+  local index,serial=readInteger(address),readInteger(address+4)
+  if not index or index&lt;=0 or not serial or serial&lt;=0 then return end
+  local o=s.at(index)
+  if b.live(o)==tostring(index)..':'..tostring(serial) then return o end
+ end
+ local d={}
+ local lastRefresh,lastLinked=0,false
+ function d.clear() cached={};lastRefresh=0;lastLinked=false end
+ function d.refresh()
+  local now=getTickCount()
+  if now-lastRefresh&lt;250 then return lastLinked end
+  lastRefresh=now;lastLinked=false
+  local world=readPointer(s.base+0x9AA0540)
+  if not b.live(world) then return false end
+  local gi=readPointer(world+0x228)
+  local widgets=subsystem(gi,0x108,'CPP_GameWidgetManagerSubsystem')
+  local root=widgets and accept(readPointer(widgets+0x80),'WBP_OverAllLayout_C',b.roots)
+  local ui=subsystem(world,0x930,'CPP_UI_BattleSubsystem')
+  if not ui then return false end
+  b.interfaces[ui]=b.live(ui)
+  accept(readPointer(ui+0x48),'WBP_Btl_ResultLayout_C',b.results)
+  local widget=weak(ui+0x40)
+  local view
+  if widget and b.isa(widget,'WBP_BattleLayout_C') then
+   local commands=readPointer(widget+0x5A0)
+   if b.live(commands) and b.isa(commands,'WBP_BtlCmdLayout_C') then
+    view=accept(readPointer(commands+0x5A8),'CPP_VM_BtlCmd',b.views)
+   end
+  end
+  -- A missing/changed link leaves the original discovery sweep available.
+  lastLinked=root~=nil and (readBytes(ui+0x80,1)==0 or view~=nil)
+  return lastLinked
+ end
+ return d
+end
+
+-- Reflection and state validation adapted from Darjjj/resonance-game-boosters (MIT).
+local function battleObjects(s)
+ local b={functions={},interfaces={},views={},results={},roots={},cursor=0,seen=0}
+ local spec={
+  GetBattleUnitByUniqueId={'CPP_BFL_Battle',true},
+  GetUnitParameter={'CPP_BtlUnit',false},GetRelation={'CPP_UnitParameter',false},
+  GetUnitAI={'CPP_BtlUnit',false},GetFightSkillId={'CPP_BtlUnitAI',false},
+  CancelCommand={'CPP_VM_BtlCmd',false,true,0},
+  CanActivateAction={'CPP_VM_BtlCmd',false},DecideActionKey={'CPP_VM_BtlCmd',false},
+  GetDefaultSkillTargetUnitUniqueId={'CPP_BFL_Battle',true},
+  DecideTarget={'CPP_VM_BtlCmd',false},IsEnableCommand={'CPP_BFL_Battle',true},
+  IsGamePaused={'GameplayStatics',true},IsPlayingEvent={'CPP_BFL_TalkEvent',true},
+  IsPlaying={'CPP_BFL_Movie',true},
+  InputDecide={'WBP_Btl_ResultLayout_C',false,false,1},
+  IsInViewport={'Widget',false},
+ }
+ local registry=s.base+0x9D84DD0
+ local inheritance={}
+ local reflected={}
+ local scanChunks={}
+ local kinds={}
+ local lastPrune=0
+ local kindPruneCursor,inheritancePruneCursor
+ local priorityCursor=nil
+ b.discovery={mode='background',inspected=0,elapsedMs=0,boosts=0,pruned=0}
+ -- Store identities as well as addresses: Unreal can reuse object/class slots.
+ function b.prune(limit)
+  limit=limit or math.huge
+  local removed=0
+  for _,cache in ipairs({b.interfaces,b.views,b.results,b.roots}) do
+   for o,identity in pairs(cache) do
+    if b.live(o)~=identity then cache[o]=nil;removed=removed+1 end
+   end
+  end
+  local function pruneClasses(cache,cursor)
+   local key=cursor or next(cache)
+   local visited=0
+   while key and visited&lt;limit do
+    local entry=cache[key];local following=next(cache,key)
+    if b.live(key,true)~=entry.identity then cache[key]=nil;removed=removed+1 end
+    key=following;visited=visited+1
+   end
+   return key
+  end
+  kindPruneCursor=pruneClasses(kinds,kindPruneCursor)
+  inheritancePruneCursor=pruneClasses(inheritance,inheritancePruneCursor)
+  if b.activeView and b.live(b.activeView)~=b.activeViewIdentity then
+   b.activeView=nil;b.activeViewIdentity=nil
+  end
+  for name,fn in pairs(b.functions) do
+   if b.live(fn.object)~=fn.identity then b.functions[name]=nil;if fn.owner then reflected[fn.owner]=nil end;removed=removed+1 end
+  end
+  b.discovery.pruned=b.discovery.pruned+removed
+ end
+ local clearDirect
+ function b.clear()
+  if clearDirect then clearDirect() end
+  b.functions={};b.interfaces={};b.views={};b.results={};b.roots={}
+  b.activeView=nil;b.activeViewIdentity=nil
+  inheritance={};scanChunks={};kinds={}
+  kindPruneCursor=nil;inheritancePruneCursor=nil;priorityCursor=nil
+ end
+ local function slot(index)
+  local count=readInteger(registry+0x14)
+  if not index or index&lt;0 or not count or index&gt;=count or count&gt;2000000 then return end
+  local chunks=readPointer(registry);if not chunks then return end
+  local chunk=readPointer(chunks+math.floor(index/65536)*8)
+  if chunk and chunk&gt;65536 then return chunk+(index%65536)*24 end
+ end
+ function b.live(o,defaults,guards)
+  if not o or o&lt;65536 then return end
+  local flags=readInteger(o+8);local index=readInteger(o+12)
+  if not flags or (flags &amp; (defaults and 0x18000 or 0x18010))~=0 then return end
+  local a=slot(index)
+  if not a or readPointer(a)~=o then return end
+  local serial=readInteger(a+16);if not serial then return end
+  if guards then
+   guards[#guards+1]={a,o};guards[#guards+1]={a+16,serial,4}
+   guards[#guards+1]={o+8,flags,4}
+  end
+  return tostring(index)..':'..tostring(serial)
+ end
+ function b.isa(o,class)
+  local c=readPointer(o+16)
+  if not c then return false end
+  local identity=b.live(c,true);if not identity then return false end
+  local cached=inheritance[c]
+  if not cached or cached.identity~=identity then
+   cached={identity=identity,answers={}};inheritance[c]=cached
+  end
+  if cached.answers[class]~=nil then return cached.answers[class] end
+  for _=1,32 do
+   if not c or c&lt;65536 then return false end
+   if type(class)=='number' and c==class or type(class)=='string' and s.oname(c)==class then cached.answers[class]=true;return true end
+   c=readPointer(c+0x40)
+  end
+  cached.answers[class]=false;return false
+ end
+ function b.registerFunction(o)
+   local n=s.oname(o);local wanted=spec[n]
+   if wanted and b.live(o,false) then
+    local owner=readPointer(o+32);local flags=readInteger(o+0xB0)
+    local native=wanted[3]~=false
+    if s.oname(owner)==wanted[1] and flags and ((flags &amp; 0x400)~=0)==native and (native or (flags &amp; 0x800)~=0) and ((flags &amp; 0x2000)~=0)==wanted[2] then
+     b.functions[n]={object=o,owner=owner,static=wanted[2],native=native,paramSize=wanted[4],identity=b.live(o),defaults=readPointer(owner+0x110)}
+    end
+   end
+
+ end
+ function b.reflectClass(c)
+  for _=1,32 do
+   local identity=b.live(c,true)
+   if not identity or reflected[c]==identity then return end
+   local owner=s.oname(c);local wanted=false
+   for _,entry in pairs(spec) do if entry[1]==owner then wanted=true;break end end
+   if wanted then
+    reflected[c]=identity
+    local f=readPointer(c+0x48);local visited={}
+    for _=1,1024 do
+     if not b.live(f) or visited[f] then break end
+     visited[f]=true
+     if readPointer(f+0x20)==c and s.oname(readPointer(f+16))=='Function' then b.registerFunction(f) end
+     f=readPointer(f+0x28)
+    end
+   end
+   c=readPointer(c+0x40)
+  end
+ end
+ local direct=battleDirectLinks and battleDirectLinks(s,b)
+ clearDirect=function() reflected={};if direct then direct.clear() end end
+ local wantedClasses={}
+ for _,entry in pairs(spec) do wantedClasses[entry[1]]=true end
+ local function inspect(i,classesOnly)
+  local chunkIndex=math.floor(i/65536)
+  local chunk=scanChunks[chunkIndex]
+  if not chunk then
+   local chunks=readPointer(registry)
+   chunk=chunks and readPointer(chunks+chunkIndex*8);scanChunks[chunkIndex]=chunk
+  end
+  local a=chunk and chunk+(i%65536)*24;local o=a and readPointer(a)
+  if not o or o&lt;65536 then return end
+  local klass=readPointer(o+16);if not klass or klass&lt;65536 then return end
+  if classesOnly then
+   if s.oname(klass)=='Class' and wantedClasses[s.oname(o)] then b.reflectClass(o) end
+   return
+  end
+  local cached=kinds[klass]
+  local cn=cached and cached.value
+  if not cn then
+   local identity=b.live(klass,true);if not identity then return end
+   cn=s.oname(klass)
+   if cn~='Function' and cn~='Class' then
+    cn=b.isa(o,'CPP_UI_BattleSubsystem') and 'UI' or b.isa(o,'CPP_VM_BtlCmd') and 'View' or b.isa(o,'WBP_Btl_ResultLayout_C') and 'Result' or b.isa(o,'WBP_OverAllLayout_C') and 'Root' or 'Other'
+   end
+   kinds[klass]={identity=identity,value=cn}
+  end
+  if cn=='Function' then b.registerFunction(o)
+  elseif cn=='Class' then b.reflectClass(o)
+  elseif cn=='UI' and b.live(o,false) then b.interfaces[o]=b.live(o)
+  elseif cn=='View' and b.live(o,false) then b.views[o]=b.live(o)
+  elseif cn=='Result' and b.live(o,false) then b.results[o]=b.live(o)
+  elseif cn=='Root' and b.live(o,false) then b.roots[o]=b.live(o) end
+ end
+ function b.scan(budget,modes)
+  local n=assert(readInteger(registry+0x14));assert(n&gt;=0 and n&lt;2000000,'Invalid object count')
+  local start=getTickCount()
+  local linked=direct and direct.refresh()
+  if start-lastPrune&gt;=2000 then b.prune(8);lastPrune=start end
+  scanChunks={} -- Chunk pointers are reused only within this slice.
+  b.seen=math.min(b.seen,n)
+  local mode='background'
+  if linked and b.ready('attack') and (b.ready('results') or not next(b.results)) then
+   b.discovery.mode='direct';b.discovery.inspected=0;b.discovery.elapsedMs=getTickCount()-start;return
+  end
+  if modes and modes.attack then
+   local _,reason=b.context()
+   if reason=='missing-command-view' then budget=math.max(budget,4096);mode='command-view' end
+  end
+  if mode=='background' and b.seen&lt;n then budget=math.max(budget,2048);mode='initial' end
+  if mode~='background' then
+   if b.discovery.mode~=mode or not priorityCursor or priorityCursor&gt;=n then priorityCursor=n-1 end
+  else priorityCursor=nil end
+  if mode~='background' then b.discovery.boosts=b.discovery.boosts+1 end
+  local processed=0
+  -- Visit reused slots too: registry size need not grow between battles.
+  while processed&lt;budget and n&gt;0 do
+   if not linked and mode~='background' and processed%2==0 then
+    -- UI objects often reuse high registry slots; search backwards as well.
+    -- Alternate with the full sweep so low reused slots cannot starve.
+    if priorityCursor&lt;0 then priorityCursor=n-1 end
+    inspect(priorityCursor);priorityCursor=priorityCursor-1
+   elseif b.seen&lt;n then inspect(b.seen,linked);b.seen=b.seen+1
+   else
+    if b.cursor&gt;=n then b.cursor=0 end
+    inspect(b.cursor);b.cursor=b.cursor+1
+   end
+   processed=processed+1
+   -- Bound each burst so CE keeps servicing its UI and the stop switch.
+   if processed%32==0 and getTickCount()-start&gt;=20 then break end
+  end
+  b.discovery.mode=mode;b.discovery.inspected=processed
+  b.discovery.elapsedMs=getTickCount()-start
+ end
+ function b.ready(mode)
+  local resultNames={InputDecide=true,IsInViewport=true,IsGamePaused=true,IsPlayingEvent=true,IsPlaying=true}
+  for n in pairs(spec) do
+   local needed=mode=='results' and resultNames[n] or mode~='results' and n~='InputDecide' and n~='IsInViewport'
+   if needed and not b.functions[n] then return false,n end
+  end
+  return true
+ end
+ local function add(g,a,v,size) g[#g+1]={a,v,size} end
+ function b.context()
+  local world=readPointer(s.base+0x9AA0540);local g={}
+  if not b.live(world,false,g) then return end
+  add(g,s.base+0x9AA0540,world)
+  local ui
+  for o,identity in pairs(b.interfaces) do
+   if b.live(o)~=identity or not b.isa(o,'CPP_UI_BattleSubsystem') then b.interfaces[o]=nil
+   elseif readPointer(o+32)==world and readBytes(o+0x80,1)==1 then
+    if ui then return end;ui=o
+   end
+  end
+  if not ui or not b.live(ui,false,g) then return end
+  local phase=readBytes(ui+0x50,1)
+  if not phase or phase&gt;2 then return end
+  add(g,ui+32,world);add(g,ui+0x80,1,1);add(g,ui+0x50,phase,1)
+  local manager=readPointer(ui+0x70)
+  local mid=b.live(manager,false,g)
+  if not mid or readPointer(manager+32)~=ui then return end
+  local typ=readBytes(manager+0x30,1);local state=readBytes(manager+0x31,1)
+  if not typ or typ&gt;2 or not state or state&gt;1 then return end
+  local asset=readPointer(manager+0x28)
+  local index=readInteger(manager+0x58);local count=readInteger(manager+0x68)
+  if not index or not count or count&lt;0 or count&gt;16 then return end
+  add(g,ui+0x70,manager);add(g,manager+32,ui)
+  add(g,manager+0x30,typ,1);add(g,manager+0x31,state,1);add(g,manager+0x28,asset)
+  local unit
+  if typ&lt;2 then
+   if index&lt;0 or index&gt;=count then return end
+   local list=readPointer(manager+0x60);if not list or list&lt;65536 then return end
+   unit=readInteger(list+index*4)
+   add(g,manager+0x58,index,4);add(g,manager+0x68,count,4);add(g,manager+0x60,list)
+   add(g,list+index*4,unit,4)
+  else index=0;unit=readInteger(manager+0x70);add(g,manager+0x70,unit,4) end
+  if not unit or unit&lt;0 then return end
+  local view,vid,visible
+  for o,identity in pairs(b.views) do
+   if b.live(o)~=identity or not b.isa(o,'CPP_VM_BtlCmd') then b.views[o]=nil
+   elseif readPointer(o+0x68)==asset then
+    local v=readBytes(o+0x199,1)
+    if v and v&lt;=1 and (state==0 and v==1 or state==1 and o==b.activeView and b.live(o)==b.activeViewIdentity) then
+     if view then return end;view=o;visible=v
+    end
+   end
+  end
+  if not view then return nil,'missing-command-view' end
+  vid=b.live(view,false,g)
+  add(g,view+0x68,asset);add(g,view+0x199,visible,1)
+  if state==0 then b.activeView=view;b.activeViewIdentity=vid end
+  return {world=world,unit=unit,state=state,commandType=typ,phase=phase,view=view,guards=g,
+   key=world..'/'..mid..'/'..vid..'/'..unit..'/'..(index+typ*0x1000000)}
+ end
+ return b
+end
+
+local function checkCode(a,bytes)
+ local actual=readBytes(a,#bytes,true);assert(actual,'Game function unavailable')
+ for i=1,#bytes do assert(actual[i]==bytes[i],'Game function mismatch; stop') end
+end
+
+-- Read the world's battle subsystem and its owned actor array (no TArray allocation).
+local function breakEnemyRoster(s,b)
+ local cached
+ local function manager(world)
+  if cached and cached.world==world and b.live(cached.object)==cached.identity and readPointer(cached.object+32)==world then return cached.object end
+  cached=nil
+  local map=world+0x930;local p=readPointer(map)
+  local n,cap=readInteger(map+8),readInteger(map+12)
+  local bits,count=readPointer(map+0x20),readInteger(map+0x28)
+  if not p or p&lt;65536 or not n or not cap or n&lt;0 or n&gt;cap or cap&gt;256 or not count or count&lt;n or count&gt;256 then return end
+  if not bits or bits==0 then bits=map+0x10 end
+  for i=0,n-1 do
+   local flags=readInteger(bits+math.floor(i/32)*4);if not flags then return end
+   if (flags &amp; (1&lt;&lt;(i%32)))~=0 then
+    local o=readPointer(p+i*24+8)
+    if b.live(o) and b.isa(o,'CPP_BtlManager') and readPointer(o+32)==world then
+     cached={world=world,object=o,identity=b.live(o)};return o
+    end
+   end
+  end
+ end
+ return function(ctx)
+  local m=manager(ctx.world);if not m then return end
+  local um=readPointer(m+0x48)
+  if not b.live(um) or not b.isa(um,'CPP_BtlUnitManager') then return end
+  local p,n,cap=readPointer(um+0x28),readInteger(um+0x30),readInteger(um+0x34)
+  if not p or p&lt;65536 or not n or not cap or n&lt;1 or n&gt;cap or cap&gt;128 then return end
+  local roster={manager=m,members={},guards={},key=b.live(ctx.world)..'/'..b.live(m)..'/'..b.live(um)}
+  if not b.live(m,false,roster.guards) or not b.live(um,false,roster.guards) then return end
+  for _,g in ipairs({{m+32,ctx.world},{m+0x48,um},{um+0x28,p},{um+0x30,n,4}})do roster.guards[#roster.guards+1]=g end
+  local seen={}
+  for i=0,n-1 do
+   local actor=readPointer(p+i*8)
+   if b.live(actor) and b.isa(actor,'CPP_BtlUnit') then
+    local param=readPointer(actor+0x838)
+    if b.live(param) and b.isa(param,'CPP_BtlUnitParameter') then
+     local id=readInteger(param+0xD0)
+     -- Exclude enemies and companion visions; relation is checked again before writing.
+     if id and id&gt;0 and readBytes(param+0x3D8,1)==2 then
+
+      local level=readPointer(actor+32)
+      if not b.live(level) or readPointer(level+0xC0)~=ctx.world then return end
+      roster.members[#roster.members+1]={actor=actor,param=param,id=id,uniqueId=readInteger(actor+0x880),slot=p+i*8,level=level,
+       identity=b.live(actor)..'/'..b.live(param)}
+     end
+    end
+   end
+  end
+  if #roster.members==0 or #roster.members&gt;128 then return end
+  -- Streaming level identities also change when battles reuse the manager.
+  roster.key=roster.key..'/'..b.live(roster.members[1].level)
+  return roster
+ end
+end
+
+
+-- Own Lua implementation. No executable patch, allocation, native call or ASM hook.
+-- Build 24250053: getter 0x52383FA reads current break at parameter+0x114.
+local legacy=_G.FFRS_ONE_HIT_STAGGER
+if legacy then legacy.stop() end -- Restore a previously enabled legacy hook first.
+local prior=_G.FFRS_LUA_BREAK
+if prior and prior.running then return end
+local s=connect(true)
+checkCode(s.base+0x52383FA,{0x8B,0x8E,0x14,0x01,0,0})
+checkCode(s.base+0x523230A,{0x41,0x2B,0xC4,0x41,0x0F,0x28,0xC5})
+local b=battleObjects(s)
+local rosterFor=breakEnemyRoster(s,b)
+local run={running=true,status='Waiting for command selection',writes=0,history={}}
+_G.FFRS_LUA_BREAK=run
+local timer=createTimer(nil,false);timer.Interval=250
+function run.stop()
+ if not run.running then return end
+ run.running=false;timer.Enabled=false;timer.destroy();b.clear()
+ -- Do not restore old gauges after attacks: natural battle progression owns them.
+end
+local function guardsMatch(guards)
+ for _,g in ipairs(guards) do
+  local value
+  if g[3]==1 then value=readBytes(g[1],1)
+  elseif g[3]==4 then value=readInteger(g[1])
+  else value=readPointer(g[1]) end
+  if value~=g[2] then return false end
+ end
+ return true
+end
+local function tick()
+ assert(getOpenedProcessID()==s.pid,'Attached process changed')
+ if isPaused() then return end
+ b.scan(256,{attack=true})
+ local ctx=b.context()
+ if not ctx or ctx.state~=0 or ctx.commandType==2 then run.status='Waiting for command selection';return end
+ local roster=rosterFor(ctx);if not roster then return end
+ -- Pause only for a short guarded data transaction; no target code is injected.
+ pause()
+ local ok,err=pcall(function()
+  if not guardsMatch(ctx.guards) or not guardsMatch(roster.guards) then return end
+  for _,u in ipairs(roster.members) do
+   if tostring(b.live(u.actor))..'/'..tostring(b.live(u.param))~=u.identity then return end
+   if readPointer(u.slot)~=u.actor or readPointer(u.actor+0x838)~=u.param or
+      readPointer(u.actor+32)~=u.level or readPointer(u.level+0xC0)~=ctx.world or
+      readInteger(u.actor+0x880)~=u.uniqueId or readInteger(u.param+0xD0)~=u.id then return end
+   local hp=readInteger(u.param+0x10C)
+   local gauge=readInteger(u.param+0x114)
+   assert(hp and gauge and gauge&gt;=0 and gauge&lt;=10000000,'Invalid enemy resource data')
+   if readBytes(u.param+0x3D8,1)==2 and hp&gt;0 and gauge&gt;1 then
+    assert(writeInteger(u.param+0x114,1),'Break write failed')
+    assert(readInteger(u.param+0x114)==1,'Break readback failed')
+    run.writes=run.writes+1
+    run.history[#run.history+1]={unit=u.id,before=gauge,after=1}
+    if #run.history&gt;32 then table.remove(run.history,1) end
+   end
+  end
+ end)
+ unpause()
+ assert(ok,err)
+ run.status='Enemy break prepared; writes='..run.writes
+end
+timer.OnTimer=function()
+ local ok,err=pcall(tick)
+ if not ok then run.error=tostring(err);run.stop();run.status='Stopped: '..run.error;showMessage(run.status) end
+end
+timer.Enabled=true
+
+{$asm}
+[DISABLE]
+{$lua}
+if syntaxcheck then return end
+local run=_G.FFRS_LUA_BREAK
+if run then run.stop() end
+
+{$asm}
+</AssemblerScript>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>24</ID>
+      <Description>"24 共鳴計數設為 399（一次／已達標不修改）"</Description>
+      <VariableType>Auto Assembler Script</VariableType>
+      <AssemblerScript>[ENABLE]
+{$lua}
+if syntaxcheck then return end
+-- FFRS retail Steam build 24250053. Read-only lookup, no injected game calls.
+-- SDK reference: PolarWizard/final-fantasy-resonance-fix (MIT).
+local function connect(battleOnly)
+ local pid=assert(getProcessIDFromProcessName('FFRS-Win64-Shipping.exe'),'Resonance is not running')
+ if getOpenedProcessID()~=pid then openProcess(pid) end
+ local base=assert(getAddressSafe('FFRS-Win64-Shipping.exe'),'Game module unavailable')
+ local pe=base+readInteger(base+0x3c)
+ assert(readInteger(pe+8)==0x6A586B2F and readInteger(pe+0x50)==503013376,'Unsupported game build; stop and revalidate')
+ local pool=base+0x9CA1280
+ local names={}
+ local blocks=readInteger(pool+8)
+ assert(blocks and blocks&gt;=0 and blocks&lt;8192,'Invalid name pool')
+ local function name(id)
+  if not id or id&lt;0 then return '?' end
+  if names[id] then return names[id] end
+  local block=math.floor(id/65536);local off=(id%65536)*2
+  if block&gt;blocks then blocks=readInteger(pool+8) or -1 end
+  if block&gt;blocks or blocks&gt;=8192 then return '?' end
+  local p=readPointer(pool+0x10+block*8);if not p or p&lt;65536 then return '?' end
+  local h=readSmallInteger(p+off);if not h then return '?' end
+  if h&lt;0 then h=h+65536 end
+  local len=math.floor(h/64)
+  if len&gt;1023 then return '?' end
+  local s
+  if h%2==1 then s=readString(p+off+2,len*2,true)
+  else local b=readBytes(p+off+2,len,true);s=b and string.char(table.unpack(b)) end
+  names[id]=s or '?';return names[id]
+ end
+ assert(name(0)=='None','Name pool does not match this game')
+ local function oname(o) return o and o&gt;65536 and name(readInteger(o+0x18)) or '?' end
+ local classes={}
+ local function cname(o)
+  local c=o and readPointer(o+0x10)
+  if not c or c&lt;65536 then return '?' end
+  if not classes[c] then classes[c]=oname(c) end
+  return classes[c]
+ end
+ local world=readPointer(base+0x9AA0540)
+ assert(world and world&gt;65536 and cname(world)=='World','Wait for a loaded world')
+ local gi=readPointer(world+0x228)
+ assert(gi and gi&gt;65536,'Wait for the game instance')
+ local g=base+0x9D84DD0;local count=readInteger(g+0x14);local chunks=readPointer(g)
+ assert(count and count&gt;0 and count&lt;2000000 and chunks and chunks&gt;65536,'Invalid object array')
+ local chunkCount=readInteger(g+0x1c)
+ assert(chunkCount and chunkCount&gt;0 and chunkCount&lt;=math.ceil(2000000/65536),'Invalid object chunks')
+ local function at(i)
+  local currentCount=battleOnly and readInteger(g+0x14) or count
+  if not i or not currentCount or currentCount&gt;2000000 or i&lt;0 or i&gt;=currentCount then return nil end
+  local ch=readPointer(chunks+math.floor(i/65536)*8)
+  return ch and ch&gt;65536 and readPointer(ch+(i%65536)*24) or nil
+ end
+ -- Battle automation does not use inventory tables or save-data writes.
+ if battleOnly then return {at=at,oname=oname,cname=cname,name=name,pid=pid,base=base} end
+ local function ismanager(o)
+  if not o or o&lt;65536 then return false end
+  local flags=readInteger(o+8)
+  return flags and (flags &amp; 0x10)==0 and cname(o)=='CPP_MuchaSaveDataManager' and readPointer(o+0x20)==gi
+ end
+ local cached=_G.FFRS_CT_SESSION
+ local manager,index
+ local tables={}
+ if cached and cached.pid==pid and cached.base==base and at(cached.index)==cached.manager and ismanager(cached.manager) and cached.tables then
+  manager,index=cached.manager,cached.index
+  tables=cached.tables
+ else
+  for i=0,count-1 do
+   local o=at(i)
+   if o and o&gt;65536 and cname(o)=='DataTable' then
+    local row=readPointer(o+0x28)
+    local rn=oname(row)
+    if rn=='CONSUMABLES_ITEM_DATA' or rn=='EQUIPMENT_ITEM_DATA' or rn=='UNIT_PARAMETER' or rn=='UNIT_LEVEL_PARAMETER_LIST' then
+     tables[#tables+1]={object=o,index=i,row=rn,name=oname(o)}
+    end
+   end
+   if ismanager(o) then assert(not manager,'Multiple active save managers; stop');manager,index=o,i end
+  end
+ end
+ assert(manager,'Active save manager not found; load a save first')
+ local save=readPointer(manager+0x60)
+ assert(save and save&gt;65536 and cname(save)=='CPP_MuchaGameSaveData','Active save data unavailable')
+ local flags=readInteger(save+8);assert(flags and (flags &amp; 0x10)==0,'Default object is not a save')
+ local gil=readInteger(save+0x28)
+ assert(gil and gil&gt;=0 and gil&lt;=2147483647,'Invalid money value')
+ local inv=readPointer(save+0xA8);local n=readInteger(save+0xB0);local cap=readInteger(save+0xB4)
+ assert(n and cap and n&gt;=0 and n&lt;=cap and cap&lt;=100000,'Invalid inventory array')
+ assert(n==0 or (inv and inv&gt;65536),'Invalid inventory pointer')
+ _G.FFRS_CT_SESSION={pid=pid,base=base,manager=manager,index=index,tables=tables}
+ return {at=at,oname=oname,cname=cname,name=name,tables=tables,pid=pid,base=base,manager=manager,save=save,gil=gil,inventory=inv,count=n,capacity=cap}
+end
+
+
+local backupDir=assert(os.getenv('TEMP') or os.getenv('TMP'),'Cannot locate temporary backup directory')
+local backupPath=backupDir..[[\FFRS-resonance-399-backup.txt]]
+print('FFRS backup: '..backupPath)
+-- One-time resonance counter adjustment. No timer or freeze.
+local s=connect()
+local address=s.save+0x58
+local before=assert(readInteger(address),'Cannot read resonance counter')
+assert(before&gt;=0,'Invalid resonance counter')
+if before&gt;=399 then showMessage('目前共鳴計數為 '..before..'，已達 399 或以上，不修改。');return end
+local backup=assert(io.open(backupPath,'a'))
+backup:write(os.date('%Y-%m-%d %H:%M:%S'),' finishblowCount_before=',before,' target=399\n')
+backup:flush();backup:close()
+local now=connect()
+assert(now.save==s.save and now.manager==s.manager,'Save changed; no changes made')
+assert(readInteger(address)==before,'Counter changed; retry while idle')
+assert(writeInteger(address,399),'Counter write failed')
+assert(readInteger(address)==399,'Counter readback failed; inspect before proceeding')
+print('RESONANCE_COUNTER',before,'-&gt;',399,'ONE_TIME')
+showMessage('共鳴計數：'..before..' → 399。\n請正常施放一次共鳴，測試 400 次成就。\n沒有計時器或鎖定；原值已記錄。')
+
+{$asm}
+[DISABLE]
 </AssemblerScript>
     </CheatEntry>
   </CheatEntries>

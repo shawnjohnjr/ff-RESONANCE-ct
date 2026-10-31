@@ -66,7 +66,7 @@ TABLE_ENTRIES = (
         "upgrade_party_to_level_99.lua", uses_gameplay_helpers=True,
     ),
     TableEntry(
-        6, "06 全角色終盤裝備包（補足背包）",
+        6, "06 全角色終盤裝備包（補足背包／留意十二武具挑戰）",
         "grant_endgame_equipment.lua", uses_gameplay_helpers=True,
     ),
     TableEntry(
@@ -129,6 +129,14 @@ TABLE_ENTRIES = (
                         "enemy_strength_plan.lua", "enemy_strength.lua"),
         disable_source="disable_enemy_strength.lua",
     ),
+    TableEntry(17, "17 古老武具十二件（各補足 1 件／一次）", "grant_arms_17.lua", uses_gameplay_helpers=True),
+    TableEntry(18, "18 一般版十二武具（各補足 1 件／一次）", "grant_arms_18.lua", uses_gameplay_helpers=True),
+    TableEntry(19, '19 暫時移除佐助刀與改版（先卸裝）', 'sasuke_test_19.lua'),
+    TableEntry(20, '20 還原佐助刀原數量', 'sasuke_test_20.lua'),
+    TableEntry(21, '21 清空十二武具一般版與改版（保留古老版）', 'all_arms_21.lua'),
+    TableEntry(22, '22 還原十二武具（保留新取得物品）', 'all_arms_22.lua'),
+    TableEntry(23, "23 一擊 BREAK（自製 Lua／實測中）", "enable_one_hit_stagger.lua", helper_sources=("battle_direct_links.lua", "battle_objects.lua", "memory_checks.lua", "break_enemy_roster.lua"), disable_source="disable_one_hit_stagger.lua"),
+    TableEntry(24, "24 共鳴計數設為 399（一次／已達標不修改）", "set_resonance_399.lua"),
 )
 
 

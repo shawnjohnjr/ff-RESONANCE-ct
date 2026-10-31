@@ -28,7 +28,7 @@ end
 local expected=inventoryMap(s)
 local counts={0,0,0}
 for _,v in ipairs(pack) do counts[v[3]]=counts[v[3]]+1 end
-local lines={string.format('%d 種角色武器各至少 1 件；%d 種防具、%d 種飾品通常各至少 8 件（龍之紋章僅補足 1 件）。',counts[1],counts[2],counts[3]),'只補足背包數量，不自動裝備，不解鎖角色。',''}
+local lines={string.format('%d 種角色武器各至少 1 件；%d 種防具、%d 種飾品通常各至少 8 件（龍之紋章僅補足 1 件）。',counts[1],counts[2],counts[3]),'只補足背包數量，不自動裝備，不解鎖角色。','【十二武具／成就提醒】本包包含十二武具的「改」版。持有一般版或改版可能使武具之間對應台座不顯示「調查」，無法正常開始挑戰；直接加入背包不保證解鎖取得武具的成就。','建議先完成十二武具挑戰與成就，再領取本包。若已受影響，先卸下相關裝備，再用第 21 項暫時清空一般版／改版（保留古老武具），完成挑戰後可用第 22 項還原。',''}
 for _,v in ipairs(pack) do
  local row=assert(catalog[v[1]],'Equipment missing from this build')
  assert(readBytes(row+0x70,1)==3 and readBytes(row+0x80,1)==v[3] and readBytes(row+0x81,1)==v[4],'Equipment category mismatch')

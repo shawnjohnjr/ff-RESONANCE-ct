@@ -24,6 +24,14 @@
 | 14 | 選角色設定八項永久能力加成，支援還原上一次修改 |
 | 15 | 每場戰鬥全員極限技槽補滿，含已解鎖擴充槽，無彈窗 |
 | 16 | 敵人強化：HP 3 倍、基礎攻擊與魔力 3 倍 |
+| 17 | Top up 12 ancient arms |
+| 18 | Top up 12 normal Legendary Arms |
+| 19 | Temporarily remove normal/upgraded Sasuke; unequip first |
+| 20 | Restore original Sasuke quantities |
+| 21 | Clear normal/upgraded Legendary Arms; unequip first; keep ancient items |
+| 22 | Restore Legendary Arms quantities, preserving newly earned items |
+| 23 | Lua one-hit BREAK; uncheck to stop |
+| 24 | Set Resonance count to 399 once; skip counts already at 399 or higher |
 
 所有項目彼此獨立，預設關閉。第 01–06 項執行一次，不會凍結數值；取消勾選不會還原修改，再次執行須先取消再勾選。第 07、08 項在勾選期間持續運作，各自取消即可停止對應功能；兩項都關閉時才解除共用回呼。
 
@@ -50,6 +58,8 @@ CT 自動連接 `FFRS-Win64-Shipping.exe`，檢查執行檔版本，從目前世
 數量範圍 1–99 是本工具的保守限制，並非宣稱遊戲所有道具的最大堆疊量。此功能不新增道具，也不刪除背包記錄。選擇後若背包位置、筆數或原數量改變，會停止寫入。
 
 ### 全角色終盤裝備包
+
+**十二武具／成就提醒：** 本包包含十二武具的「改」版。持有對應的一般版或「改」版，可能使武具之間台座不顯示「調查」，阻擋正常挑戰；直接加入背包不保證解鎖取得武具的成就。實測移除佐助刀一般版與「改」版後，「調查」重新出現，完成挑戰才跳出首次取得十二武具成就。建議先完成十二武具挑戰與成就再領取本包。若已受影響，先卸下相關裝備，再使用第 21 項暫時清空十二武具一般版／改版（保留古老武具）；完成挑戰後，可使用第 22 項還原。
 
 第 06 項透過遊戲的 `AddInventory` 函式補足背包數量：8 種武器各至少 1 件，以下防具與飾品各至少 8 件。已持有更多時不減少、不重複加送。只加入背包，不自動裝備、不解鎖角色，也不變更角色等級。
 
@@ -382,3 +392,5 @@ CrossOver 實測菲娜八項能力的小幅增加與還原全部通過：HP 5708
 ## 石板碎片唯讀偵測研究
 
 新增[拾取前後比對方法與資料結構](docs/tablet-pickup-detection.md)，包含獨立的唯讀 CE 匯出工具及 Python 比對工具。目前精確驗證一個競技場石板；尚非全 99 個石板追蹤器。
+
+Entries 19/21 require unequipping affected gear first. Restore entries 20/22 require the same Cheat Engine session, game process and save. Entry 20 requires cleared quantities; entry 22 preserves newly earned items. Backup logs are written to `FFRS-*-backup.txt` in Windows `%TEMP%` (or `%TMP%`), with paths printed in the Lua window; these logs are not automatically loaded for restoration. Entry 23 has live user-confirmed BREAK, Extra Phase and repeated BREAK tests, not coverage of every enemy. After entry 24, cast Resonance normally once; the 400-cast achievement was confirmed in a live test.

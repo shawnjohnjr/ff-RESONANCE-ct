@@ -24,6 +24,14 @@ For Steam **build 24250053**. Tested on macOS with standard CrossOver and Window
 | 14 | Select a character and set permanent stat bonuses; undo the last edit |
 | 15 | Fill the entire battle party’s Limit gauges once per battle, including unlocked extra bars, without popups |
 | 16 | Enemy strength: 3× HP and 3× base Attack / Intelligence |
+| 17 | Top up 12 ancient arms |
+| 18 | Top up 12 normal Legendary Arms |
+| 19 | Temporarily remove normal/upgraded Sasuke; unequip first |
+| 20 | Restore original Sasuke quantities |
+| 21 | Clear normal/upgraded Legendary Arms; unequip first; keep ancient items |
+| 22 | Restore Legendary Arms quantities, preserving newly earned items |
+| 23 | Lua one-hit BREAK; uncheck to stop |
+| 24 | Set Resonance count to 399 once; skip counts already at 399 or higher |
 
 Entries are independent and disabled by default. Entries 01–06 run once, without freezing values; unchecking does not undo changes. Uncheck and recheck to run them again. Entries 07 and 08 run while checked and can be disabled separately. Their shared callback is removed when both are disabled.
 
@@ -48,6 +56,8 @@ Examples: `Potion / 治療劑`, `Phoenix Down / 鳳凰尾巴`, and `Crimson Sabe
 The 1–99 range is a conservative tool limit, not a claim about every item's maximum stack size. This editor does not create items or remove inventory records. It stops if the inventory address, record count, or selected quantity changes during input.
 
 ### Endgame equipment pack
+
+**Legendary Arms / achievement warning:** This pack includes upgraded Legendary Arms. Owning a corresponding normal or upgraded version may hide the Examine prompt at its Chamber of Arms pedestal and prevent the normal trial from starting. Adding items directly does not guarantee acquisition achievements. In a live test, removing both Sasuke versions restored the prompt; completing the trial then unlocked the first Legendary Arm achievement. Prefer completing the trials and achievements before claiming this pack. If affected, unequip the relevant gear and use entry 21 to temporarily clear the normal and upgraded Legendary Arms, keeping the ancient items; entry 22 can restore the equipment after the trials.
 
 Entry 06 calls the game's `AddInventory` function to bring inventory quantities up to **at least one of each weapon** and **at least eight of each armor and accessory listed below**. It preserves higher existing quantities and does not keep adding duplicates. It only adds inventory; it does not equip items, unlock characters, or change levels.
 
@@ -380,3 +390,5 @@ Attack and Intelligence were increased to 3× as requested; this multiplier has 
 ## Read-only Tablet Shard research
 
 [Controlled before/after detection and memory layout](docs/tablet-pickup-detection.en.md), with a standalone read-only CE exporter and Python comparison tool. One Colosseum shard is precisely verified; this is not yet a complete 99-shard tracker.
+
+Entries 19/21 require unequipping affected gear first. Restore entries 20/22 require the same Cheat Engine session, game process and save. Entry 20 requires cleared quantities; entry 22 preserves newly earned items. Backup logs are written to `FFRS-*-backup.txt` in Windows `%TEMP%` (or `%TMP%`), with paths printed in the Lua window; these logs are not automatically loaded for restoration. Entry 23 has live user-confirmed BREAK, Extra Phase and repeated BREAK tests, not coverage of every enemy. After entry 24, cast Resonance normally once; the 400-cast achievement was confirmed in a live test.
